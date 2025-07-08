@@ -2,6 +2,7 @@
 #define MOTOR_CONTROL_HPP
 
 #include <Arduino.h>
+#include "IMU.hpp"
 
 class MotorController {
 private:
@@ -41,51 +42,29 @@ public:
     analogWrite(mot2_pwm, pwmVal);
   }
 
+  void spinCW(int pwmVal) (
+    pwmVal = constrain(pwmVal, 0, 255);
+
+    digitalWrite(mot1_dir, LOW);
+    analogWrite(mot1_pwm, pwmVal);
+
+    digitalWrite(mot2_dir, LOW);
+    analogWrite(mot2_pwm, pwmVal);
+  )
+
+    void spinCCW(int pwmVal) (
+    pwmVal = constrain(pwmVal, 0, 255);
+
+    digitalWrite(mot1_dir, HIGH);
+    analogWrite(mot1_pwm, pwmVal);
+
+    digitalWrite(mot2_dir, HIGH);
+    analogWrite(mot2_pwm, pwmVal);
+  )
+
   void stop() {
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);
-  }
-
-  void spinToHeading(IMU &imu, float targetHeading) {
-    float kp = 1.5;
-    float ki = 0.0;
-    float kd = 0.2;
-
-    float integral = 0;
-    float lastError = 0;
-    unsigned long lastTime = millis();
-
-    while (true) {
-      imu.update();
-      float currentHeading = imu.getHeading();
-
-      float error = targetHeading - currentHeading;
-      if (error > 180) error -= 360;
-      if (error < -180) error += 360;
-
-      if (abs(error) < 3.0) {
-        setMotorSpeeds(0, 0);
-        Serial.println("Spin complete");
-        break;
-      }
-
-      unsigned long now = millis();
-      float dt = (now - lastTime) / 1000.0;
-      lastTime = now;
-
-      integral += error * dt;
-      float derivative = (error - lastError) / dt;
-      lastError = error;
-
-      float output = kp * error + ki * integral + kd * derivative;
-      output = constrain(output, -120, 120);
-
-      int leftSpeed = -output;
-      int rightSpeed = output;
-      setMotorSpeeds(leftSpeed, rightSpeed);
-
-      delay(10);
-    }
   }
 
 #endif
