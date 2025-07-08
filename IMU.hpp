@@ -6,33 +6,29 @@
 
 namespace mtrn3100 {
 
-// ────────────── Simple IMU class (yaw only) ──────────────
 class IMU {
 public:
     IMU() : _addr(0x68) {}
 
-    /* Call once in setup() while the IMU is stationary */
     void calibrate(uint16_t samples = 200) {
         float sumZ = 0;
         for (uint16_t i = 0; i < samples; ++i) {
             _readRaw();
             sumZ += _rawGyroZ;
-            delay(2);                      // ~500 Hz sampling
+            delay(2);
         }
-        _gyroBiasZ = sumZ / samples;       // bias/error
+        _gyroBiasZ = sumZ / samples;
     }
 
-    /* Call every loop() */
     void update() {
         _readRaw();
         unsigned long now = micros();
-        float dt = (now - _prevMicros) * 1e-6f;   // seconds
+        float dt = (now - _prevMicros) * 1e-6f;
         _prevMicros = now;
 
-        float gz = (_rawGyroZ - _gyroBiasZ);      // °/s bias-corrected
-        _yaw += gz * dt;                          // integrate to °
+        float gz = (_rawGyroZ - _gyroBiasZ);
+        _yaw += gz * dt;
 
-        /* keep yaw in [-180, 180] for readability */
         if (_yaw > 180.0f)  _yaw -= 360.0f;
         if (_yaw < -180.0f) _yaw += 360.0f;
     }
@@ -41,7 +37,6 @@ public:
     void begin() {
       Wire.begin();
 
-      /* Wake up MPU-6050 (clear sleep bit) */
       Wire.beginTransmission(0x68);
       Wire.write(0x6B);
       Wire.write(0);
@@ -50,33 +45,29 @@ public:
     }
 
 private:
+
     const uint8_t _addr;
-
-    /* Raw sensor readings (scaled to physical units) */
     float _rawGyroZ;
-
-    /* Bias (error) */
     float _gyroBiasZ = 0;
-
-    /* State */
-    float _yaw = 0;                 // integrated heading (°)
+    float _yaw = 0;
     unsigned long _prevMicros = 0;
 
-    /* Low-level read: accel & gyro, but we only need gyro Z */
     void _readRaw() {
         Wire.beginTransmission(_addr);
-        Wire.write(0x43);           // GYRO_XOUT_H
+        Wire.write(0x43);
         Wire.endTransmission(false);
         Wire.requestFrom(_addr, 6, true);
 
-        Wire.read(); Wire.read();   // skip Gx
-        Wire.read(); Wire.read();   // skip Gy
+        Wire.read();
+        Wire.read();
+        Wire.read();
+        Wire.read();
         int16_t gzRaw = (Wire.read() << 8) | Wire.read();
 
-        _rawGyroZ = gzRaw / 131.0f; // ±250 °/s → scale = 131
+        _rawGyroZ = gzRaw / 131.0;
     }
 };
 
-} // namespace mtrn3100
+}
 
 #endif

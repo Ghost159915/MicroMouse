@@ -22,16 +22,6 @@ public:
     return (Kp * error) + (Ki * integral) + (Kd * derivative);
   }
 
-  float computeAngle(float SetAngle, float MeasuredAngle, float dt) {
-    float error = SetAngle - MeasuredAngle;
-    integral += error * dt;
-
-    float derivative = -(MeasuredAngle - prevMeasured) / dt;
-    prevMeasured = MeasuredAngle;
-
-    return (Kp * error) + (Ki * integral) + (Kd * derivative);
-  }
-
   void setTunings(float p, float i, float d) {
     Kp = p;
     Ki = i;

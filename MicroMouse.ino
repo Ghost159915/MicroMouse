@@ -33,7 +33,7 @@ void setup() {
   lastTime = millis();
 }
 
-static float wrap180(float a) {                 // keep ±180°
+static float wrap180(float a) {
     if (a >  180.0f) a -= 360.0f;
     if (a < -180.0f) a += 360.0f;
     return a;
@@ -44,7 +44,7 @@ void loop() {
   float dt = (now - lastTime) / 1000.0;
   lastTime = now; 
 
-    imu.update();                                   // ★ NEW — first
+    imu.update();
     float measuredAngle = imu.yaw();  
 
   float measuredFrontDistance = lidar.getFrontDistance();
@@ -57,7 +57,6 @@ void loop() {
     float control = DistancePID.compute(DESIRED_DISTANCE, measuredFrontDistance, dt);
     int pwm = constrain(abs(control), 0, 255);
 
-
     if (control > 5) {
       motors.moveBackward(pwm);
     } else if (control < -5) {
@@ -67,10 +66,9 @@ void loop() {
     }
   } else if (command == 'B') {
 
-    float angleError = wrap180(DESIRED_ANGLE - measuredAngle);           // ← NEW
-    float angleCmd   = TurningPID.compute(0.0f, -angleError, dt);        // ← NEW
+    float angleError = wrap180(DESIRED_ANGLE - measuredAngle);
+    float angleCmd   = TurningPID.compute(0.0f, -angleError, dt);
     int   pwm        = constrain(abs(angleCmd), 0, 255);    
-
 
     if (angleError > 3) {
       motors.spinCW(pwm);
