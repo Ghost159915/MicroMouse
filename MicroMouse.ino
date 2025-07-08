@@ -29,6 +29,7 @@ void setup() {
   lidar.begin();
 
   delay(2000);
+  
 
   lastTime = millis();
 }
