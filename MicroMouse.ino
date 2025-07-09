@@ -21,6 +21,15 @@ const float DESIRED_DISTANCE = 100.0;
 const float DESIRED_ANGLE = 90.0;
 unsigned long lastTime = 0;
 
+enum states {
+  STARTUP_TURN,
+  WAIT_FOR_ROTATION,
+  RETURN_TO_HEADING,
+  WALL_APPROACH,
+  COMMAND_CHAIN,
+  COMPLETE
+};
+
 void setup() {
   Serial.begin(9600);
   imu.begin();
@@ -39,7 +48,32 @@ static float wrap180(float a) {
     return a;
 }
 
+states = COMMAND_CHAIN;
+
 void loop() {
+
+  switch(states) {
+    case STARTUP_TURN:
+
+      break;
+    case WAIT_FOR_ROTATION:
+
+      break;
+    case WALL_APPROACH:
+
+      break;
+    case RETURN_TO_HEADING:
+
+      break;
+    case COMMAND_CHAIN:
+    motors.chainCommand("ff", &TurningPID, &imu);
+
+      break;
+    case COMPLETE:
+      
+      break;
+  }
+  
   unsigned long now = millis();
   float dt = (now - lastTime) / 1000.0;
   lastTime = now; 
@@ -81,7 +115,7 @@ void loop() {
       motors.stop();
     }
 
-    display.showIMUReading(imy.yaw());
+    display.showIMUReading(imu.yaw());
 
 
 

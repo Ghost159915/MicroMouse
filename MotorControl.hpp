@@ -1,7 +1,9 @@
 #ifndef MOTOR_CONTROL_HPP
 #define MOTOR_CONTROL_HPP
+#define CELL_DISTANCE = 180
 
 #include <Arduino.h>
+#include <string>
 #include "IMU.hpp"
 
 class MotorController {
@@ -66,6 +68,57 @@ public:
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);
   }
+
+  void chainCommand (string cmd, PIDcontroller* controller, IMU* imu) {
+
+    for (int i = 0; i < string.length(cmd); i++) {
+
+      // add calibrate() after each movement
+      //delay(50)
+      if (cmd[i] == 'f') {
+        float total_count = CELL_DISTANCE/(2*pi*16);
+        Encoder encoders = encoder();
+        while(encoders.getTicks() < total_count) {
+          moveForward(255);
+        }
+        delay(100);
+
+      } else if (cmd[i] == 'l') {
+
+        float measuredAngle = imu.yaw();
+        float DESIRED_ANGLE = 90.0;
+
+        float angleError = wrap180(DESIRED_ANGLE - measuredAngle);
+        float angleCmd   = controller.compute(0.0f, -angleError, dt);
+        int   pwm        = constrain(abs(angleCmd), 0, 255);    
+
+        if (angleError > 3) {
+          spinCW(pwm);
+        } else if (angleError < -3) {
+          spinCCW(pwm);
+        } else {
+          stop();
+        }
+
+      } else if (cmd[i] == 'r') {
+        float measuredAngle = imu.yaw();
+        float DESIRED_ANGLE = -90.0;
+
+        float angleError = wrap180(DESIRED_ANGLE - measuredAngle);
+        float angleCmd   = controller.compute(0.0f, -angleError, dt);
+        int   pwm        = constrain(abs(angleCmd), 0, 255);    
+
+        if (angleError > 3) {
+          spinCW(pwm);
+        } else if (angleError < -3) {
+          spinCCW(pwm);
+        } else {
+          stop();
+        }
+      }
+    }
+  }
+}
 
 #endif
 

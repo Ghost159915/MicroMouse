@@ -15,7 +15,7 @@ private:
   }
 
 public:
-  Encoder(int a, int b) : encA(a), encB(b), ticks(0) {
+  Encoder(int a = 2, int b = 7) : encA(a), encB(b), ticks(0) {
     instance = this;
   }
 
