@@ -62,6 +62,13 @@ public:
 
     oled.display();
   }
+
+  void ShowIMUReading(int angle) {
+    oled.clearDisplay();
+    oled.setCursor(0, 0);
+    oled.print("Reading: ");
+    oled.print(angle, 1);
+  }
 };
 
 #endif

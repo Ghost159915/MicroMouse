@@ -64,6 +64,9 @@ void loop() {
     } else {
       motors.stop();
     }
+
+      display.showLidarDistance(measuredLeftDistance, measuredFrontDistance, measuredRightDistance);
+
   } else if (command == 'B') {
 
     float angleError = wrap180(DESIRED_ANGLE - measuredAngle);
@@ -81,7 +84,7 @@ void loop() {
     //logic for the chaining of commands for final part of stage 2 (DUE WEEK 8)
   }
 
-  display.showLidarDistance(measuredLeftDistance, measuredFrontDistance, measuredRightDistance);
+  display.showIMUReading(imy.yaw());
 
 }
 
