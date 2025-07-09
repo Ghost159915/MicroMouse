@@ -6,13 +6,12 @@
 #include "IMU.hpp"
 
 const float WHEEL_RADIUS = 16.0;
-const int TICKS_PER_REV = 700;
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
 Display display(WHEEL_RADIUS, TICKS_PER_REV);
-PIDController DistancePID(2.0, 0.023, 0.0);
-PIDController TurningPID(2.0, 0.0, 0.0);
+PIDController DistancePID(2.0, 0.023, 0.0, 0.85);
+PIDController TurningPID(0.5, 0.0, 0.0, 0.85);
 
 LidarSensor lidar;
 IMU imu;
@@ -21,14 +20,6 @@ const float DESIRED_DISTANCE = 100.0;
 const float DESIRED_ANGLE = 90.0;
 unsigned long lastTime = 0;
 
-enum states {
-  STARTUP_TURN,
-  WAIT_FOR_ROTATION,
-  RETURN_TO_HEADING,
-  WALL_APPROACH,
-  COMMAND_CHAIN,
-  COMPLETE
-};
 
 void setup() {
   Serial.begin(9600);
@@ -38,23 +29,35 @@ void setup() {
   encoder.begin();
   display.begin();
   lidar.begin();
-  delay(2000);
+  delay(3000);
   lastTime = millis();
 }
 
 static float wrap180(float a) {
-    if (a >  180.0f) a -= 360.0f;
-    if (a < -180.0f) a += 360.0f;
+    if (a >  180.0) a -= 360.0;
+    if (a < -180.0) a += 360.0;
     return a;
 }
 
-states = COMMAND_CHAIN;
+states currentState = STARTUP_TURN;
 
 void loop() {
 
-  switch(states) {
-    case STARTUP_TURN:
+  unsigned long now = millis();
+  float dt = (now - lastTime) / 1000.0;
+  if (dt < 0.001) dt = 0.001;
+  lastTime = now;
 
+  String command = "fl";
+
+  imu.update();
+
+  switch(currentState) {
+    case STARTUP_TURN:
+      Serial.println("State: STARTUP_TURN");
+      motors.PIDturn90CW(&imu, &TurningPID, dt);
+      motors.stop();
+      currentState = COMPLETE;
       break;
     case WAIT_FOR_ROTATION:
 
@@ -66,61 +69,14 @@ void loop() {
 
       break;
     case COMMAND_CHAIN:
-    motors.chainCommand("ff", &TurningPID, &imu);
-
+      motors.chainCommand(command, &TurningPID, &encoder, &imu, dt, &currentState);
       break;
     case COMPLETE:
-      
+      motors.stop();
+      break;
+    default:
+      motors.stop();
       break;
   }
-  
-  unsigned long now = millis();
-  float dt = (now - lastTime) / 1000.0;
-  lastTime = now; 
-
-    imu.update();
-    float measuredAngle = imu.yaw();  
-
-  float measuredFrontDistance = lidar.getFrontDistance();
-  float measuredRightDistance = lidar.getRightDistance();
-  float measuredLeftDistance = lidar.getLeftDistance();
-
-  char command = 'D';
-
-  if (command == 'D') {
-    float control = DistancePID.compute(DESIRED_DISTANCE, measuredFrontDistance, dt);
-    int pwm = constrain(abs(control), 0, 255);
-
-    if (control > 5) {
-      motors.moveBackward(pwm);
-    } else if (control < -5) {
-      motors.moveForward(pwm);
-    } else {
-      motors.stop();
-    }
-
-      display.showLidarDistance(measuredLeftDistance, measuredFrontDistance, measuredRightDistance);
-
-  } else if (command == 'B') {
-
-    float angleError = wrap180(DESIRED_ANGLE - measuredAngle);
-    float angleCmd   = TurningPID.compute(0.0f, -angleError, dt);
-    int   pwm        = constrain(abs(angleCmd), 0, 255);    
-
-    if (angleError > 3) {
-      motors.spinCW(pwm);
-    } else if (angleError < -3) {
-      motors.spinCCW(pwm);
-    } else {
-      motors.stop();
-    }
-
-    display.showIMUReading(imu.yaw());
-
-
-
-  } else if (command == 'C') {
-    //logic for the chaining of commands for final part of stage 2 (DUE WEEK 8)
-  }
 }
-
+ 

@@ -4,7 +4,6 @@
 #include "MPU6050.h"
 #include <Wire.h>
 
-namespace mtrn3100 {
 
 class IMU {
 public:
@@ -68,6 +67,5 @@ private:
     }
 };
 
-}
 
 #endif

@@ -28,6 +28,11 @@ public:
   long getTicks() {
     return ticks;
   }
+
+  void reset() {
+    ticks = 0;
+}
+
 };
 
 Encoder* Encoder::instance = nullptr;
