@@ -80,11 +80,13 @@ void loop() {
     } else {
       motors.stop();
     }
+
+    display.showIMUReading(imy.yaw());
+
+
+
   } else if (command == 'C') {
     //logic for the chaining of commands for final part of stage 2 (DUE WEEK 8)
   }
-
-  display.showIMUReading(imy.yaw());
-
 }
 
