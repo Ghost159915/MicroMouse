@@ -1,6 +1,9 @@
 #ifndef PID_CONTROLLER_HPP
 #define PID_CONTROLLER_HPP
 
+#include <Wire.h>
+
+
 class PIDController {
 private:
   float Kp, Ki, Kd;

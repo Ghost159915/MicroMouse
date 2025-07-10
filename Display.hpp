@@ -2,73 +2,73 @@
 #define DISPLAY_HPP
 
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 
 class Display {
 private:
-  Adafruit_SSD1306 oled;
-  float wheelRadius;
-  int ticksPerRev;
+    U8G2_SSD1306_128X64_NONAME_1_HW_I2C oled;
+    float wheelRadius;
+    int ticksPerRev;
 
 public:
-  Display(float radius, int ticks)
-    : oled(128, 64, &Wire, -1), wheelRadius(radius), ticksPerRev(ticks) {}
+    Display(float radius, int ticks)
+      : oled(U8G2_R0, U8X8_PIN_NONE), wheelRadius(radius), ticksPerRev(ticks) {}
 
-  void begin() {
-    // if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    //   Serial.println("OLED not found!");
-    //   while (1);
-    // }
+    void begin() {
+        oled.begin();
+        oled.clearBuffer();
+        oled.setFont(u8g2_font_ncenB08_tr);
+        oled.drawStr(0, 12, "OLED Booting!");
+        oled.sendBuffer();
+        delay(500);
+    }
 
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    oled.setTextColor(SSD1306_WHITE);
-    oled.setCursor(0, 0);
-    oled.println("OLED Booting!!");
-    oled.display();
-  }
+    void showEncoderDistance(long encoderTicks) {
+        float distPerTick = (2 * PI * wheelRadius) / ticksPerRev;
+        float distance = encoderTicks * distPerTick;
 
-  void showEncoderDistance(long encoderTicks) {
-    float distPerTick = (2 * PI * wheelRadius) / ticksPerRev;
-    float distance = encoderTicks * distPerTick;
+        oled.clearBuffer();
+        oled.setFont(u8g2_font_ncenB08_tr);
+        oled.drawStr(0, 12, "Distance:");
+        
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%.1f mm", distance);
+        oled.drawStr(0, 28, buffer);
+        
+        oled.sendBuffer();
+    }
 
-    oled.clearDisplay();
-    oled.setCursor(0, 0);
-    oled.println("Distance:");
-    oled.setCursor(0, 16);
-    oled.print(distance, 1);
-    oled.println(" mm");
-    oled.display();
-  }
+    void showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance) {
+        oled.clearBuffer();
+        oled.setFont(u8g2_font_ncenB08_tr);
 
-  void showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance) {
-    oled.clearDisplay();
-    oled.setCursor(32, 0);
-    oled.print("L");
-    oled.setCursor(64, 0);
-    oled.print("F");
-    oled.setCursor(96, 0);
-    oled.print("R");
+        oled.drawStr(0, 12, "L:");
+        oled.setCursor(20, 12);
+        oled.print(LeftDistance);
 
-    oled.setCursor(27, 20);
-    oled.print(LeftDistance, 1);
+        oled.drawStr(0, 28, "F:");
+        oled.setCursor(20, 28);
+        oled.print(FrontDistance);
 
-    oled.setCursor(59, 20);
-    oled.print(FrontDistance, 1);
+        oled.drawStr(0, 44, "R:");
+        oled.setCursor(20, 44);
+        oled.print(RightDistance);
 
-    oled.setCursor(91, 20);
-    oled.print(RightDistance, 1);
+        oled.sendBuffer();
+    }
 
-    oled.display();
-  }
-
-  void ShowIMUReading(int angle) {
-    oled.clearDisplay();
-    oled.setCursor(0, 0);
-    oled.print("Reading: ");
-    oled.print(angle, 1);
-  }
+    void ShowIMUReading(int angle) {
+        oled.clearBuffer();
+        oled.setFont(u8g2_font_ncenB08_tr);
+        
+        oled.drawStr(0, 12, "IMU Heading:");
+        
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%d deg", angle);
+        oled.drawStr(0, 28, buffer);
+        
+        oled.sendBuffer();
+    }
 };
 
 #endif

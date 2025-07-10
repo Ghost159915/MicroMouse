@@ -12,98 +12,97 @@
 #include "IMU.hpp"
 #include "Encoder.hpp"
 #include "PIDController.hpp"
+#include "LidarSensor.hpp"
+#include <Wire.h>
+
 
 enum states {
-  STARTUP_TURN,
-  WAIT_FOR_ROTATION,
-  RETURN_TO_HEADING,
-  WALL_APPROACH,
-  COMMAND_CHAIN,
-  COMPLETE
+    STARTUP_TURN,
+    WAIT_FOR_ROTATION,
+    RETURN_TO_HEADING,
+    WALL_APPROACH,
+    COMMAND_CHAIN,
+    COMPLETE
 };
 
 class MotorController {
 private:
-  int mot1_pwm;
-  int mot1_dir;
-  int mot2_pwm;
-  int mot2_dir;
+    int mot1_pwm;
+    int mot1_dir;
+    int mot2_pwm;
+    int mot2_dir;
 
 public:
 
-  //Constructor
-  MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
-    : mot1_pwm(m1_pwm), mot1_dir(m1_dir), mot2_pwm(m2_pwm), mot2_dir(m2_dir) {}
+    //Constructor
+    MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
+        : mot1_pwm(m1_pwm), mot1_dir(m1_dir), mot2_pwm(m2_pwm), mot2_dir(m2_dir) {}
 
-  //Pin setup
-  void begin() {
-    pinMode(mot1_pwm, OUTPUT);
-    pinMode(mot1_dir, OUTPUT);
-    pinMode(mot2_pwm, OUTPUT);
-    pinMode(mot2_dir, OUTPUT);
-  }
+    //Pin setup
+    void begin() {
+        pinMode(mot1_pwm, OUTPUT);
+        pinMode(mot1_dir, OUTPUT);
+        pinMode(mot2_pwm, OUTPUT);
+        pinMode(mot2_dir, OUTPUT);
+    }
 
   // Helper to keep angle in -180 to 180
-  float wrap180(float a) {
-    if (a > 180.0) a -= 360.0;
-    if (a < -180.0) a += 360.0;
-    return a;
-  }
+    float wrap180(float a) {
+        if (a > 180.0) a -= 360.0;
+        if (a < -180.0) a += 360.0;
+        return a;
+    }
 
-  // Basic movement
-  void moveForward(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
+    // Basic movement
+    void moveForward(int pwmVal) {
+        pwmVal = constrain(pwmVal, 0, 255);
 
-    digitalWrite(mot1_dir, HIGH);
-    analogWrite(mot1_pwm, pwmVal);
+        digitalWrite(mot1_dir, HIGH);
+        analogWrite(mot1_pwm, pwmVal);
 
-    digitalWrite(mot2_dir, LOW);
-    analogWrite(mot2_pwm, pwmVal);
-  }
+        digitalWrite(mot2_dir, LOW);
+        analogWrite(mot2_pwm, pwmVal);
+    }
 
-  void moveBackward(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
+    void moveBackward(int pwmVal) {
+        pwmVal = constrain(pwmVal, 0, 255);
 
-    digitalWrite(mot1_dir, LOW);
-    analogWrite(mot1_pwm, pwmVal);
+        digitalWrite(mot1_dir, LOW);
+        analogWrite(mot1_pwm, pwmVal);
 
-    digitalWrite(mot2_dir, HIGH);
-    analogWrite(mot2_pwm, pwmVal);
-  }
+        digitalWrite(mot2_dir, HIGH);
+        analogWrite(mot2_pwm, pwmVal);
+    }
 
-  void spinCW(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
+    void spinCW(int pwmVal) {
+        pwmVal = constrain(pwmVal, 0, 255);
 
-    digitalWrite(mot1_dir, LOW);
-    analogWrite(mot1_pwm, pwmVal);
+        digitalWrite(mot1_dir, LOW);
+        analogWrite(mot1_pwm, pwmVal);
 
-    digitalWrite(mot2_dir, LOW);
-    analogWrite(mot2_pwm, pwmVal);
-  }
+        digitalWrite(mot2_dir, LOW);
+        analogWrite(mot2_pwm, pwmVal);
+    }
 
     void spinCCW(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
+        pwmVal = constrain(pwmVal, 0, 255);
 
-    digitalWrite(mot1_dir, HIGH);
-    analogWrite(mot1_pwm, pwmVal);
+        digitalWrite(mot1_dir, HIGH);
+        analogWrite(mot1_pwm, pwmVal);
 
-    digitalWrite(mot2_dir, HIGH);
-    analogWrite(mot2_pwm, pwmVal);
-  }
+        digitalWrite(mot2_dir, HIGH);
+        analogWrite(mot2_pwm, pwmVal);
+    }
 
-  void stop() {
-    analogWrite(mot1_pwm, 0);
-    analogWrite(mot2_pwm, 0);
-  }
+    void stop() {
+        analogWrite(mot1_pwm, 0);
+        analogWrite(mot2_pwm, 0);
+   }
 
-  void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset) {
+void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset) {
     turnPID->reset();
-
-    Serial.print("Returning to Heading by Offset: ");
-    Serial.println(targetOffset);
-
-    float startHeading = imu->yaw();
-    float targetHeading = wrap180(startHeading - targetOffset);
+    float startAngle = imu->yaw();
+    float targetAngle = wrap180(startAngle - targetOffset);
 
     unsigned long lastTime = millis();
 
@@ -116,28 +115,29 @@ public:
       lastTime = now;
 
       float currentAngle = imu->yaw();
-      float error = wrap180(targetHeading - currentAngle);
+      float error = wrap180(targetAngle - currentAngle);
 
-      Serial.print("Error: "); Serial.println(error);
+      if (abs(error) < 1.0) {
+        stop();
+        Serial.println("Heading Corrected!");
 
-      if (abs(error) < 3.0) {
-          stop();
-          break;
+        break;
       }
 
       float control = turnPID->compute(0.0, -error, dt);
       int pwm = constrain(abs(control), 0, 255);
 
       if (error > 0) {
-        spinCW(pwm);
-      } else {
         spinCCW(pwm);
+        Serial.print("Heading Correcting CCW  |  Error: "); Serial.println(error);
+
+      } else {
+        spinCW(pwm);
+        Serial.print("Heading Correcting CW  |  Error: "); Serial.println(error);
       }
-      delay(10);
+    delay(10);
     }
-      stop();
-      Serial.println("Return to heading complete!");
-  }
+}
 
   // Precision 90-degree turn CW using PID + IMU
   void PIDturn90CW(IMU* imu, PIDController* turnPID) {
@@ -167,9 +167,13 @@ public:
       int pwm = constrain(abs(control), 0, 255);
 
       if (error > 0) {
-        spinCW(pwm);
-      } else {
         spinCCW(pwm);
+        Serial.print("Heading Correcting CCW  |  Error: "); Serial.println(error);
+
+      } else {
+        spinCW(pwm);
+        Serial.print("Heading Correcting CW  |  Error: "); Serial.println(error);
+
       }
     delay(10);
     }
@@ -208,6 +212,43 @@ public:
       }
     delay(10);
     }
+  }
+
+  void wallApproach (LidarSensor* lidar, PIDController* DistancePID, float dt) {
+
+    Serial.println("WALL_APPROACH: Starting 30-second interaction");
+    unsigned long startTime = millis();
+
+    while (millis() - startTime < 30000) {
+
+        // 1️⃣ get distance
+        float currentDistance = lidar->getFrontDistance();
+        float error = 100.0 - currentDistance;
+
+        // 2️⃣ PID control
+        float control = DistancePID->compute(0.0, -error, dt);
+        int pwm = constrain(abs(control), 0, 255);
+
+        // 3️⃣ Logging
+        Serial.print("LIDAR Distance: "); Serial.print(currentDistance);
+        Serial.print("  |   Error: "); Serial.print(error);
+        Serial.print("  |   PWM Command: "); Serial.println(pwm);
+
+        if (error > 3) {
+            moveBackward(pwm);
+        } else if (error < -3) {
+            moveForward(pwm);
+        } else {
+            stop();
+        }
+
+        delay(50);
+    }
+
+    // After timeout
+    stop();
+    Serial.println("WALL_APPROACH: Finished, switching to COMMAND_CHAIN");
+
   }
 
   void chainCommand (String cmd, PIDController* controller, Encoder* encoder, IMU* imu, float dt, states* currentState) {
