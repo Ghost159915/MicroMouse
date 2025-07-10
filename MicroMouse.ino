@@ -10,7 +10,7 @@ const float WHEEL_RADIUS = 16.0;
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
-Display display(WHEEL_RADIUS, TICKS_PER_REV);
+// Display display(WHEEL_RADIUS, TICKS_PER_REV);
 PIDController DistancePID(2.0, 0.0, 0.0, 1.0);
 PIDController TurningPID(2.0, 0.48, 0.0, 1.0);
 LidarSensor lidar;
@@ -23,7 +23,6 @@ void setup() {
     Serial.begin(9600);
     Wire.begin();
     delay(2000);
-    display.begin();
     imu.begin();
     motors.begin();
     encoder.begin();
@@ -39,10 +38,11 @@ static float wrap180(float a) {
     return a;
 }
 
-states currentState = COMMAND_CHAIN;
+states currentState = STARTUP_TURN;
 
 void loop() {
 	unsigned long now = millis();
+
 
   	float dt = (now - lastTime) / 1000.0;
   	if (dt < 0.001) {
@@ -50,47 +50,41 @@ void loop() {
 	}
 
   	lastTime = now;
-  	String command = "ff";
+  	String command = "frr";
   	imu.update();
 
 	switch(currentState) {
     	case STARTUP_TURN:
-      	Serial.println("State: STARTUP_TURN");
+      	// Serial.println("State: STARTUP_TURN");
       	motors.PIDturn90CW(&imu, &TurningPID);
-				display.ShowIMUReading(imu.yaw());
       	currentState = WAIT_FOR_ROTATION;
       	break;
 
     case WAIT_FOR_ROTATION:
-      	Serial.println("State: WAIT_FOR_ROTATION");
-				display.ShowIMUReading(imu.yaw());
+      	// Serial.println("State: WAIT_FOR_ROTATION");
       	rotationOffset = motors.waitForRotation(&imu);
       	currentState = RETURN_TO_HEADING;
       	break;
 
     case RETURN_TO_HEADING:
-      	Serial.println("State: RETURN_TO_HEADING");
-				display.ShowIMUReading(imu.yaw());
+      	// Serial.println("State: RETURN_TO_HEADING");
       	motors.returnToHeading(&imu, &TurningPID, rotationOffset);
       	currentState = WALL_APPROACH;
       	break;
 
-    // case WALL_APPROACH:
-    //   	Serial.println("State: WALL_APPROACH");
-		// 		int frontDist = lidar.getFrontDistance();
-		// 		display.showLidarDistance(0, frontDist, 0);
-		// 		motors.wallApproach(&lidar, &DistancePID, dt, &currentState);
-    //   	break;
+    case WALL_APPROACH:
+      	// Serial.println("State: WALL_APPROACH");
+				motors.wallApproach(&lidar, &DistancePID, dt, &currentState);
+      	break;
 
     case COMMAND_CHAIN:
-      	Serial.println("State: COMMAND_CHAIN");
+      	// Serial.println("State: COMMAND_CHAIN");
       	motors.chainCommand(command, &TurningPID, &encoder, &imu, dt, &currentState);
-				display.showEncoderDistance(encoder.getTicks());
 				currentState = COMPLETE;
       	break;
 
     case COMPLETE:
-      	Serial.println("COMPLETE");
+      	// Serial.println("State: COMPLETE");
       	motors.stop();
       	break;
 
