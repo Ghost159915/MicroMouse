@@ -214,22 +214,18 @@ void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset) {
     }
   }
 
-  void wallApproach (LidarSensor* lidar, PIDController* DistancePID, float dt) {
-
+  void wallApproach (LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState) {
     Serial.println("WALL_APPROACH: Starting 30-second interaction");
     unsigned long startTime = millis();
 
     while (millis() - startTime < 30000) {
 
-        // 1️⃣ get distance
         float currentDistance = lidar->getFrontDistance();
         float error = 100.0 - currentDistance;
 
-        // 2️⃣ PID control
         float control = DistancePID->compute(0.0, -error, dt);
         int pwm = constrain(abs(control), 0, 255);
 
-        // 3️⃣ Logging
         Serial.print("LIDAR Distance: "); Serial.print(currentDistance);
         Serial.print("  |   Error: "); Serial.print(error);
         Serial.print("  |   PWM Command: "); Serial.println(pwm);
@@ -247,7 +243,8 @@ void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset) {
 
     // After timeout
     stop();
-    Serial.println("WALL_APPROACH: Finished, switching to COMMAND_CHAIN");
+    Serial.println("WALL_APPROACH: Finished");
+    *currentState = COMMAND_CHAIN;
 
   }
 
