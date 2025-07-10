@@ -20,6 +20,11 @@ const float DESIRED_DISTANCE = 100.0;
 const float DESIRED_ANGLE = 90.0;
 unsigned long lastTime = 0;
 
+float accelBaseline[3];
+bool detectedPickup = false;
+float rotationOffset = 0.0;
+
+
 
 void setup() {
   Serial.begin(9600);
@@ -27,10 +32,11 @@ void setup() {
   imu.calibrate();
   motors.begin();
   encoder.begin();
-  display.begin();
+  //display.begin();
   lidar.begin();
   delay(3000);
   lastTime = millis();
+
 }
 
 static float wrap180(float a) {
@@ -39,7 +45,7 @@ static float wrap180(float a) {
     return a;
 }
 
-states currentState = STARTUP_TURN;
+states currentState = WAIT_FOR_ROTATION;
 
 void loop() {
 
@@ -48,33 +54,44 @@ void loop() {
   if (dt < 0.001) dt = 0.001;
   lastTime = now;
 
-  String command = "fl";
+  String command = "ff";
 
   imu.update();
 
   switch(currentState) {
     case STARTUP_TURN:
       Serial.println("State: STARTUP_TURN");
-      motors.PIDturn90CW(&imu, &TurningPID, dt);
-      motors.stop();
+      motors.PIDturn90CW(&imu, &TurningPID);
+      imu.update();
+      imu.getAcceleration(accelBaseline);
+	    detectedPickup = false;
       currentState = COMPLETE;
       break;
     case WAIT_FOR_ROTATION:
-
-      break;
-    case WALL_APPROACH:
-
+      Serial.println("State: WAIT_FOR_ROTATION");
+      rotationOffset = motors.waitForRotation(&imu);
+      // Serial.println(rotationOffset);
+      currentState = RETURN_TO_HEADING;
       break;
     case RETURN_TO_HEADING:
-
+      Serial.println("State: RETURN_TO_HEADING");
+      motors.returnToHeading(&imu, &TurningPID, rotationOffset);
+      currentState = WALL_APPROACH;
       break;
+    case WALL_APPROACH:
+      Serial.println("State: WALL_APPROACH");
+      break;
+
     case COMMAND_CHAIN:
+      Serial.println("COMMAND_CHAIN");
       motors.chainCommand(command, &TurningPID, &encoder, &imu, dt, &currentState);
       break;
     case COMPLETE:
+      Serial.println("COMPLETE");
       motors.stop();
       break;
     default:
+      Serial.println("default");
       motors.stop();
       break;
   }

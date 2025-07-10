@@ -96,6 +96,49 @@ public:
     analogWrite(mot2_pwm, 0);
   }
 
+  void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset) {
+    turnPID->reset();
+
+    Serial.print("Returning to Heading by Offset: ");
+    Serial.println(targetOffset);
+
+    float startHeading = imu->yaw();
+    float targetHeading = wrap180(startHeading - targetOffset);
+
+    unsigned long lastTime = millis();
+
+    while (true) {
+      imu->update();
+
+      unsigned long now = millis();
+      float dt = (now - lastTime) / 1000.0;
+      if (dt < 0.001) dt = 0.001;
+      lastTime = now;
+
+      float currentAngle = imu->yaw();
+      float error = wrap180(targetHeading - currentAngle);
+
+      Serial.print("Error: "); Serial.println(error);
+
+      if (abs(error) < 3.0) {
+          stop();
+          break;
+      }
+
+      float control = turnPID->compute(0.0, -error, dt);
+      int pwm = constrain(abs(control), 0, 255);
+
+      if (error > 0) {
+        spinCW(pwm);
+      } else {
+        spinCCW(pwm);
+      }
+      delay(10);
+    }
+      stop();
+      Serial.println("Return to heading complete!");
+  }
+
   // Precision 90-degree turn CW using PID + IMU
   void PIDturn90CW(IMU* imu, PIDController* turnPID) {
     turnPID->reset();
@@ -130,6 +173,7 @@ public:
       }
     delay(10);
     }
+    
   }
 
   void PIDturn90CCW(IMU* imu, PIDController* turnPID) {
@@ -183,6 +227,37 @@ public:
       }
     }
     *currentState = COMPLETE;
+  }
+
+
+  float waitForRotation(IMU* imu) {
+    // Take initial baseline acceleration
+
+    stop();
+    Serial.println("WAIT_FOR_ROTATION: Stop motors.");
+
+    float startHeading = imu->yaw();
+
+    Serial.print("Start Heading: "); Serial.println(startHeading);
+    Serial.println("You have 10 seconds to rotate the robot!");
+
+    unsigned long startMillis = millis();
+    while (millis() - startMillis < 10000) {
+      imu->update();
+      float currentHeading = imu->yaw();
+      Serial.println(currentHeading);
+      delay(5);  // small delay to not spam too much
+    }
+
+    imu->update();
+
+    float endHeading = imu->yaw();
+    Serial.print("End Heading: "); Serial.println(endHeading);
+
+    float delta = wrap180(endHeading - startHeading);
+    Serial.print("Rotation Offset Detected: "); Serial.println(delta);
+
+    return delta;
   }
 };
 

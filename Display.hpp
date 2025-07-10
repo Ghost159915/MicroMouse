@@ -16,10 +16,10 @@ public:
     : oled(128, 64, &Wire, -1), wheelRadius(radius), ticksPerRev(ticks) {}
 
   void begin() {
-    if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-      Serial.println("OLED not found!");
-      while (1);
-    }
+    // if (!oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    //   Serial.println("OLED not found!");
+    //   while (1);
+    // }
 
     oled.clearDisplay();
     oled.setTextSize(1);

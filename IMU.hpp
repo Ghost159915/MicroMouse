@@ -32,7 +32,14 @@ public:
         if (_yaw < -180.0f) _yaw += 360.0f;
     }
 
-    float yaw() const { return _yaw; }
+void getAcceleration(float* accelOut) {
+    _readAccelRaw(accelOut);
+}
+
+    float yaw() const { 
+        return _yaw; 
+    }
+    
     void begin() {
       Wire.begin();
 
@@ -65,6 +72,22 @@ private:
 
         _rawGyroZ = gzRaw / 131.0;
     }
+
+    void _readAccelRaw(float* accelOut) {
+    Wire.beginTransmission(_addr);
+    Wire.write(0x3B);  // ACCEL_XOUT_H
+    Wire.endTransmission(false);
+    Wire.requestFrom(_addr, 6, true);
+
+    int16_t ax = (Wire.read() << 8) | Wire.read();
+    int16_t ay = (Wire.read() << 8) | Wire.read();
+    int16_t az = (Wire.read() << 8) | Wire.read();
+
+    // Convert to g's (assuming ±2g range)
+    accelOut[0] = ax / 16384.0f;
+    accelOut[1] = ay / 16384.0f;
+    accelOut[2] = az / 16384.0f;
+}
 };
 
 
