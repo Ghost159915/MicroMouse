@@ -229,7 +229,7 @@ void wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, stat
     }
 
     // Check if time is up
-    if (millis() - wallApproachStart >= 10000) {
+    if (millis() - wallApproachStart >= 20000) {
         stop();
         //Serial.println("WALL_APPROACH: Finished - Transition to COMMAND_CHAIN");
         wallApproachActive = false;

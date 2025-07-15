@@ -1,1 +1,1 @@
-CMakeLists.txt not found in C:\Users\Benas Vaiciulis\Documents\Arduino\MicroMouse Select CMakeLists.txt
+CMakeLists.txt not found in /Users/benasvaiciulis/Documents/Arduino/MicroMouse Select CMakeLists.txt
