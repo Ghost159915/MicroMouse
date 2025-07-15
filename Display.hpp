@@ -1,73 +1,62 @@
 #ifndef DISPLAY_HPP
 #define DISPLAY_HPP
 
-#include <Wire.h>
 #include <U8g2lib.h>
 
 class Display {
 private:
+    // Page mode constructor! Ultra-low RAM use.
     U8G2_SSD1306_128X64_NONAME_1_HW_I2C oled;
     float wheelRadius;
     int ticksPerRev;
 
 public:
     Display(float radius, int ticks)
-      : oled(U8G2_R0, U8X8_PIN_NONE), wheelRadius(radius), ticksPerRev(ticks) {}
+      : oled(U8G2_R0), wheelRadius(radius), ticksPerRev(ticks) {}
 
     void begin() {
         oled.begin();
-        oled.clearBuffer();
-        oled.setFont(u8g2_font_ncenB08_tr);
-        oled.drawStr(0, 12, "OLED Booting!");
-        oled.sendBuffer();
+
+        oled.firstPage();
+        do {
+            oled.setFont(u8g2_font_5x8_tr);
+            oled.drawStr(0, 12, "OLED Booting!");
+        } while (oled.nextPage());
+
         delay(500);
     }
 
-    void showEncoderDistance(long encoderTicks) {
-        float distPerTick = (2 * PI * wheelRadius) / ticksPerRev;
-        float distance = encoderTicks * distPerTick;
-
-        oled.clearBuffer();
-        oled.setFont(u8g2_font_ncenB08_tr);
-        oled.drawStr(0, 12, "Distance:");
-        
-        char buffer[16];
-        snprintf(buffer, sizeof(buffer), "%.1f mm", distance);
-        oled.drawStr(0, 28, buffer);
-        
-        oled.sendBuffer();
-    }
 
     void showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance) {
-        oled.clearBuffer();
-        oled.setFont(u8g2_font_ncenB08_tr);
+        char bufferL[8], bufferF[8], bufferR[8];
+        snprintf(bufferL, sizeof(bufferL), "%d", LeftDistance);
+        snprintf(bufferF, sizeof(bufferF), "%d", FrontDistance);
+        snprintf(bufferR, sizeof(bufferR), "%d", RightDistance);
 
-        oled.drawStr(0, 12, "L:");
-        oled.setCursor(20, 12);
-        oled.print(LeftDistance);
+        oled.firstPage();
+        do {
+            oled.setFont(u8g2_font_5x8_tr);
+            oled.drawStr(0, 12, "L:");
+            oled.drawStr(20, 12, bufferL);
 
-        oled.drawStr(0, 28, "F:");
-        oled.setCursor(20, 28);
-        oled.print(FrontDistance);
+            oled.drawStr(0, 28, "F:");
+            oled.drawStr(20, 28, bufferF);
 
-        oled.drawStr(0, 44, "R:");
-        oled.setCursor(20, 44);
-        oled.print(RightDistance);
-
-        oled.sendBuffer();
+            oled.drawStr(0, 44, "R:");
+            oled.drawStr(20, 44, bufferR);
+        } while (oled.nextPage());
     }
 
-    void ShowIMUReading(int angle) {
-        oled.clearBuffer();
-        oled.setFont(u8g2_font_ncenB08_tr);
-        
-        oled.drawStr(0, 12, "IMU Heading:");
-        
+    void showIMUReading(int angle) {
         char buffer[16];
         snprintf(buffer, sizeof(buffer), "%d deg", angle);
-        oled.drawStr(0, 28, buffer);
-        
-        oled.sendBuffer();
+
+        oled.firstPage();
+        do {
+            oled.setFont(u8g2_font_5x8_tr);
+            oled.drawStr(0, 12, "IMU Heading:");
+            oled.drawStr(0, 28, buffer);
+        } while (oled.nextPage());
     }
 };
 
