@@ -7,6 +7,8 @@ The objective is to design, build, and program an autonomous mobile robot that n
 
 ---
 
+
+
 ## 🎯 Objectives
 - Build a robot that autonomously solves a maze.
 - Demonstrate advanced control, sensing, and navigation.

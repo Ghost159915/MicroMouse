@@ -43,6 +43,8 @@ public:
         LeftLidar.setAddress(0x56);
         delay(50);
 
+        
+
         digitalWrite(RightPin, HIGH);
         delay(50);
         RightLidar.init();

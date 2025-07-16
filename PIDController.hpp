@@ -12,6 +12,8 @@ private:
   float lastDerivative;
   float alpha;  // smoothing factor for derivative
 
+  
+
 public:
   PIDController(float p, float i, float d, float smoothing=0.8)
     : Kp(p), Ki(i), Kd(d), integral(0), prevMeasured(0), lastDerivative(0), alpha(smoothing) {}

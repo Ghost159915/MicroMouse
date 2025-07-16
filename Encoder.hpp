@@ -21,6 +21,8 @@ public:
       instance = this;
     }
 
+
+
     void begin() {
         pinMode(encA, INPUT_PULLUP);
         pinMode(encB, INPUT_PULLUP);
