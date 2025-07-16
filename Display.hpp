@@ -1,4 +1,4 @@
-#ifndef DISPLAY_HPP
+#define DISPLAY_HPP
 #define DISPLAY_HPP
 
 #include <U8g2lib.h>
@@ -25,8 +25,6 @@ public:
 
         delay(500);
     }
-
-
 
 
     void showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance) {
@@ -61,5 +59,3 @@ public:
         } while (oled.nextPage());
     }
 };
-
-#endif

@@ -6,7 +6,7 @@
 #define TICKS_PER_REV 700
 #define RADIUS 16
 
-
+#define MOVE_TIMEOUT 3000  // milliseconds safety timeout per move
 
 #include <Arduino.h>
 #include <math.h>
@@ -34,13 +34,18 @@ private:
     bool wallApproachActive = false;
     unsigned long wallApproachStart = 0;
 
+    // === Command chain variables ===
+    char commandBuffer[64];
+    int commandIndex = 0;
+    bool commandActive = false;
+    bool moveInProgress = false;
+    unsigned long moveStartTime = 0;
+
 public:
 
-    // Constructor
     MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
         : mot1_pwm(m1_pwm), mot1_dir(m1_dir), mot2_pwm(m2_pwm), mot2_dir(m2_dir) {}
 
-    // Pin setup
     void begin() {
         pinMode(mot1_pwm, OUTPUT);
         pinMode(mot1_dir, OUTPUT);
@@ -48,14 +53,12 @@ public:
         pinMode(mot2_dir, OUTPUT);
     }
 
-    // Wrap -180 to +180
     float wrap180(float angle) {
         while (angle > 180.0) angle -= 360.0;
         while (angle < -180.0) angle += 360.0;
         return angle;
     }
 
-    // Basic motor control
     void moveForward(int pwmVal) {
         pwmVal = constrain(pwmVal, 0, 255);
         digitalWrite(mot1_dir, HIGH);
@@ -98,7 +101,6 @@ public:
         turnPID->reset();
         imu->update();
         float targetAngle = wrap180(imu->yaw() - 90.0);
-
         unsigned long lastTime = millis();
 
         while (true) {
@@ -106,22 +108,12 @@ public:
             unsigned long now = millis();
             float dt = max((now - lastTime) / 1000.0f, 0.001f);
             lastTime = now;
-
             float error = wrap180(targetAngle - imu->yaw());
-
-            if (abs(error) < 3.0) {
-                stop();
-                break;
-            }
-
+            if (abs(error) < 0.5) { stop(); break; }
             float control = turnPID->compute(0.0, -error, dt);
             int pwm = constrain(abs(control), 0, 255);
-
-            if (error > 0) {
-                spinCCW(pwm);
-            } else {
-                spinCW(pwm);
-            }
+            if (error > 0) spinCCW(pwm);
+            else spinCW(pwm);
             delay(10);
         }
     }
@@ -130,7 +122,6 @@ public:
         turnPID->reset();
         imu->update();
         float targetAngle = wrap180(imu->yaw() + 90.0);
-
         unsigned long lastTime = millis();
 
         while (true) {
@@ -138,22 +129,12 @@ public:
             unsigned long now = millis();
             float dt = max((now - lastTime) / 1000.0f, 0.001f);
             lastTime = now;
-
             float error = wrap180(targetAngle - imu->yaw());
-
-            if (abs(error) < 3.0) {
-                stop();
-                break;
-            }
-
+            if (abs(error) < 0.5) { stop(); break; }
             float control = turnPID->compute(0.0, -error, dt);
             int pwm = constrain(abs(control), 0, 255);
-
-            if (error > 0) {
-                spinCW(pwm);
-            } else {
-                spinCCW(pwm);
-            }
+            if (error > 0) spinCCW(pwm);
+            else spinCW(pwm);
             delay(10);
         }
     }
@@ -163,7 +144,6 @@ public:
         turnPID->reset();
         imu->update();
         float targetHeading = wrap180(imu->yaw() - targetOffset);
-
         unsigned long lastTime = millis();
 
         while (true) {
@@ -171,24 +151,12 @@ public:
             unsigned long now = millis();
             float dt = max((now - lastTime) / 1000.0f, 0.001f);
             lastTime = now;
-
             float error = wrap180(targetHeading - imu->yaw());
-            //Serial.print("ReturnToHeading | Error: "); Serial.println(error);
-
-            if (abs(error) < 1.0) {
-                stop();
-                //Serial.println("ReturnToHeading: Corrected!");
-                break;
-            }
-
+            if (abs(error) < 0.5) { stop(); break; }
             float control = turnPID->compute(0.0, -error, dt);
             int pwm = constrain(abs(control), 0, 255);
-
-            if (error > 0) {
-                spinCCW(pwm);
-            } else {
-                spinCW(pwm);
-            }
+            if (error > 0) spinCCW(pwm);
+            else spinCW(pwm);
             delay(10);
         }
 
@@ -196,91 +164,113 @@ public:
         stop();
     }
 
-    // === Wait for Rotation Detection ===
+    // === Wait for Rotation ===
     float waitForRotation(IMU* imu) {
         stop();
-        //Serial.println("WAIT_FOR_ROTATION: Idle and monitoring.");
-
         imu->update();
         float startHeading = imu->yaw();
-        //Serial.print("Start Heading: "); Serial.println(startHeading);
-
-        //Serial.println("10 seconds to rotate...");
         unsigned long startMillis = millis();
         while (millis() - startMillis < 10000) {
             imu->update();
             delay(5);
         }
-
         imu->update();
         float endHeading = imu->yaw();
-        //Serial.print("End Heading: "); Serial.println(endHeading);
-
-        float delta = wrap180(endHeading - startHeading);
-        //Serial.print("Rotation Offset Detected: "); Serial.println(delta);
-
-        return delta;
+        return wrap180(endHeading - startHeading);
     }
 
-    // === Wall Following for 30s ===
-void wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState) {
-    if (!wallApproachActive) {
-        Serial.println("WALL_APPROACH: Starting 30-second interaction");
-        wallApproachActive = true;
-        wallApproachStart = millis();
-    }
+    // === Wall Following ===
+    void wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState) {
+        if (!wallApproachActive) {
+            Serial.println("WALL_APPROACH: Starting 20-second interaction");
+            wallApproachActive = true;
+            wallApproachStart = millis();
+        }
 
-    // Check if time is up
-    if (millis() - wallApproachStart >= 20000) {
-        stop();
-        //Serial.println("WALL_APPROACH: Finished - Transition to COMMAND_CHAIN");
-        wallApproachActive = false;
-        *currentState = COMMAND_CHAIN;
-        return;
-    }
-
-    // Run PID control
-    float currentDistance = lidar->getFrontDistance();
-    float error = 100.0 - currentDistance;
-    float control = DistancePID->compute(0.0, -error, dt);
-    int pwm = constrain(abs(control), 0, 255);
-
-    if (error > 3) {
-        moveBackward(pwm);
-    } else if (error < -3) {
-        moveForward(pwm);
-    } else {
-        stop();
-    }
-
-    Serial.print("WALL_APPROACH | LIDAR: "); Serial.print(currentDistance);
-    Serial.print(" Error: "); Serial.print(error);
-    Serial.print(" PWM: "); Serial.println(pwm);
-}
-
-    // === Command Chain Parsing ===
-    void chainCommand(String cmd, PIDController* controller, Encoder* encoder, IMU* imu, float dt, states* currentState) {
-      Serial.println("Entered chainCommand");
-
-        for (int i = 0; i < cmd.length(); i++) {
-            encoder->reset();
-
-            if (cmd[i] == 'f') {
-                float total_count = CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV;
-                while (encoder->getTicks() < total_count) {
-                    Serial.print("ENCODER TICKS: ");
-                    Serial.println(encoder->getTicks());
-                    moveForward(150);
-                }
+        if (millis() - wallApproachStart >= 20000) {
             stop();
-            } else if (cmd[i] == 'r') {
+            wallApproachActive = false;
+            *currentState = COMMAND_CHAIN;
+            return;
+        }
+
+        float currentDistance = lidar->getFrontDistance();
+        float error = 100.0 - currentDistance;
+        float control = DistancePID->compute(0.0, -error, dt);
+        int pwm = constrain(abs(control), 0, 255);
+
+        if (error > 3) moveBackward(pwm);
+        else if (error < -3) moveForward(pwm);
+        else stop();
+
+        Serial.print(" LIDAR: "); Serial.print(currentDistance);
+        Serial.print(" Error: "); Serial.print(error);
+        Serial.print(" PWM: "); Serial.println(pwm);
+    }
+
+    // === Command Chain Control ===
+    void startCommandChain(const char* cmd) {
+        strncpy(commandBuffer, cmd, sizeof(commandBuffer) - 1);
+        commandBuffer[sizeof(commandBuffer) - 1] = '\0';
+        commandIndex = 0;
+        commandActive = true;
+        moveInProgress = false;
+        Serial.println("COMMAND_CHAIN: Started");
+    }
+
+    bool isCommandActive() {
+        return commandActive;
+    }
+
+    void processCommandStep(PIDController* controller, Encoder* encoder, IMU* imu, states* currentState) {
+        if (!commandActive) {
+            stop();
+            *currentState = COMPLETE;
+            return;
+        }
+
+        // End of command string?
+        if (commandBuffer[commandIndex] == '\0') {
+            commandActive = false;
+            stop();
+            *currentState = COMPLETE;
+            Serial.println("COMMAND_CHAIN: Finished!");
+            return;
+        }
+
+        char currentCmd = commandBuffer[commandIndex];
+
+        if (!moveInProgress) {
+            encoder->reset();
+            Serial.print("Executing command letter: "); Serial.println(currentCmd);
+
+            if (currentCmd == 'F') {
+                moveInProgress = true;
+                moveStartTime = millis();
+            } 
+            else if (currentCmd == 'R') {
                 PIDturn90CW(imu, controller);
-            } else if (cmd[i] == 'l') {
+                commandIndex++;
+            } 
+            else if (currentCmd == 'L') {
                 PIDturn90CCW(imu, controller);
+                commandIndex++;
+            } 
+            else {
+                commandIndex++;  // skip invalid
+            }
+        } 
+        else {
+            float total_count = CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV;
+            if (encoder->getTicks() < total_count && (millis() - moveStartTime) < MOVE_TIMEOUT) {
+                moveForward(150);
+            } 
+            else {
+                stop();
+                moveInProgress = false;
+                commandIndex++;
             }
         }
-        Serial.println("chainCommand done, setting COMPLETE");
-        *currentState = COMPLETE;
     }
 };
 
