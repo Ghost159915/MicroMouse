@@ -1,9 +1,9 @@
-#include "MotorControl.hpp"
-#include "Encoder.hpp"
-#include "Display.hpp"
-#include "PIDController.hpp"
-#include "LidarSensor.hpp"
-#include "IMU.hpp"
+#include "include/MotorControl.hpp"
+#include "include/Encoder.hpp"
+#include "include/Display.hpp"
+#include "include/PIDController.hpp"
+#include "include/LidarSensor.hpp"
+#include "include/IMU.hpp"
 #include <Wire.h>
 
 //RFRFFLFLFFRFFRFFLFFFRFLFRF
@@ -11,19 +11,19 @@
 //RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
 
 const float WHEEL_RADIUS = 16.0;
-const char* command = "RFRFFLFLFFRFFRFFLFFFRFLFRF"; // 4X 32 CMD
+const char* command = "FFRFFLF"; // 4X 32 CMD
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
 Display display(WHEEL_RADIUS, TICKS_PER_REV);
-PIDController DistancePID(2.0, 0.0, 0.0, 1.0);
+PIDController DistancePID(1.5, 0.0, 0.0, 1.0);
 PIDController TurningPID(2.0, 0.48, 0.0, 1.0);
 LidarSensor lidar;
 IMU imu;
 
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
-states currentState = COMMAND_CHAIN;
+states currentState = WALL_APPROACH;
 
 void setup() {
     Serial.begin(9600);
@@ -39,7 +39,7 @@ void setup() {
     lastTime = millis();
 
     motors.startCommandChain(command);
-    currentState = COMMAND_CHAIN;
+    // currentState = COMMAND_CHAIN;
 }
 
 void loop() {
@@ -73,10 +73,12 @@ void loop() {
             break;
 
         case COMMAND_CHAIN:
+            Serial.println("COMMAND_CHAIN");
             motors.processCommandStep(&TurningPID, &encoder, &imu, &currentState);
             break;
 
         case COMPLETE:
+            Serial.println("COMPLETE");
             motors.stop();
             break;
 
