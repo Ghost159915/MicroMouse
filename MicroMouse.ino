@@ -11,19 +11,19 @@
 //RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
 
 const float WHEEL_RADIUS = 16.0;
-const char* command = "FFRFFLF"; // 4X 32 CMD
+const char* command = "RLF"; // 4X 32 CMD
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
 Display display(WHEEL_RADIUS, TICKS_PER_REV);
-PIDController DistancePID(1.5, 0.0, 0.0, 1.0);
-PIDController TurningPID(2.0, 0.48, 0.0, 1.0);
+PIDController DistancePID(1.5, 0.0, 0.25, 0.0);
+PIDController TurningPID(2.0, 0.48, 0.0, 0.0);
 LidarSensor lidar;
 IMU imu;
 
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
-states currentState = WALL_APPROACH;
+states currentState = STARTUP_TURN;
 
 void setup() {
     Serial.begin(9600);
@@ -52,37 +52,45 @@ void loop() {
 
     switch(currentState) {
         case STARTUP_TURN:
+            display.showState("STARTUP_TURN");
             display.showIMUReading(imu.yaw());
             motors.PIDturn90CW(&imu, &TurningPID);
             currentState = WAIT_FOR_ROTATION;
             break;
 
         case WAIT_FOR_ROTATION:
+            display.showState("WAIT_ROTATE");
             rotationOffset = motors.waitForRotation(&imu);
             currentState = RETURN_TO_HEADING;
             break;
 
         case RETURN_TO_HEADING:
+            display.showState("RETURN_HEADING");
             motors.returnToHeading(&imu, &TurningPID, rotationOffset);
+            delay(5000);
             currentState = WALL_APPROACH;
             break;
 
         case WALL_APPROACH:
-            display.showLidarDistance(lidar.getLeftDistance(), lidar.getFrontDistance(), lidar.getRightDistance());
+            // display.showState("WALL_APPROACH");
+            display.showLidarDistance(lidar.getLeftDistance(),
+                                      lidar.getFrontDistance(),
+                                      lidar.getRightDistance());
             motors.wallApproach(&lidar, &DistancePID, dt, &currentState);
             break;
 
         case COMMAND_CHAIN:
-            Serial.println("COMMAND_CHAIN");
+            display.showState("COMMAND_CHAIN");
             motors.processCommandStep(&TurningPID, &encoder, &imu, &currentState);
             break;
 
         case COMPLETE:
-            Serial.println("COMPLETE");
+            display.showState("COMPLETE");
             motors.stop();
             break;
 
         default:
+            display.showState("UNKNOWN");
             motors.stop();
             break;
     }

@@ -154,18 +154,40 @@ void MotorController::wallApproach(LidarSensor* lidar, PIDController* DistancePI
         return;
     }
 
-    float currentDistance = lidar->getFrontDistance();
+    // === Moving average smoothing ===
+#define WINDOW_SIZE 5
+    static float distanceWindow[WINDOW_SIZE] = {100, 100, 100, 100, 100};
+    static int windowIndex = 0;
+
+    float rawDistance = lidar->getFrontDistance();
+    distanceWindow[windowIndex] = rawDistance;
+    windowIndex = (windowIndex + 1) % WINDOW_SIZE;
+
+    float smoothedDistance = 0.0f;
+    for (int i = 0; i < WINDOW_SIZE; ++i) {
+        smoothedDistance += distanceWindow[i];
+    }
+    smoothedDistance /= WINDOW_SIZE;
+
+    float currentDistance = smoothedDistance;
     float error = 100.0 - currentDistance;
-    float control = DistancePID->compute(0.0, -error, dt);
-    int pwm = constrain(abs(control), 0, 255);
 
-    if (error > 3) moveBackward(pwm);
-    else if (error < -3) moveForward(pwm);
-    else stop();
+    // === Deadzone handling ===
+    if (abs(error) < 3.0) {
+        stop();
+    } else {
+        float control = DistancePID->compute(0.0, -error, dt);
+        int pwm = constrain(abs(control), 0, 255);
 
-    Serial.print(" LIDAR: "); Serial.print(currentDistance);
-    Serial.print(" Error: "); Serial.print(error);
-    Serial.print(" PWM: "); Serial.println(pwm);
+        if (error > 0) moveBackward(pwm);
+        else           moveForward(pwm);
+    }
+
+    // === Debug Output ===
+    Serial.print("RAW: "); Serial.print(rawDistance);
+    Serial.print("  AVG: "); Serial.print(currentDistance);
+    Serial.print("  ERR: "); Serial.print(error);
+    Serial.print("  PWM: "); Serial.println((abs(error) < 3.0) ? 0 : constrain(abs(DistancePID->compute(0.0, -error, dt)), 0, 255));
 }
 
 // === Command Chain Control ===

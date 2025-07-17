@@ -47,3 +47,14 @@ void Display::showIMUReading(int angle) {
         oled.drawStr(0, 28, buffer);
     } while (oled.nextPage());
 }
+
+void Display::showState(const char* stateName) {
+    oled.firstPage();
+    do {
+        oled.setFont(u8g2_font_5x8_tr);
+        oled.drawStr(0, 12, "STATE:");
+        oled.drawStr(0, 28, stateName);
+    } while (oled.nextPage());
+}
+
+
