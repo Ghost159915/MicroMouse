@@ -19,6 +19,8 @@ enum states {
     RETURN_TO_HEADING,
     WALL_APPROACH,
     COMMAND_CHAIN,
+    TURNING,
+    RETURNING,
     COMPLETE,
     TEST
 };
@@ -40,32 +42,43 @@ private:
     unsigned long moveStartTime;
     float headingTarget;
 
+    // Turn state
+    bool turnInProgress;
+    float turnTargetYaw;
+    PIDController* turnPID;
+
 public:
     MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir);
+	void begin();
 
-
+	//Basic motion
     void driveStraightIMU(IMU* imu, PIDController* headingPID, float dt, float basePWM);
-
-
-    void begin();
-    float wrap180(float angle);
-
     void moveForward(int pwmVal);
     void moveBackward(int pwmVal);
     void spinCW(int pwmVal);
     void spinCCW(int pwmVal);
     void stop();
 
+	//Rotations
     void PIDturn90CW(IMU* imu, PIDController* turnPID);
     void PIDturn90CCW(IMU* imu, PIDController* turnPID);
+    void startTurn(char direction, IMU* imu, PIDController* turnPID);
+    bool updateTurn(IMU* imu, float dt);
+
+	//Other rotations
     void returnToHeading(IMU* imu, PIDController* turnPID, float targetOffset);
     float waitForRotation(IMU* imu);
 
-    void wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState);
-
+	//Command chain
     void startCommandChain(const char* cmd);
     bool isCommandActive();
     void processCommandStep(PIDController* turnPID, PIDController* headingPID, Encoder* encoder, IMU* imu, states* currentState, float dt);
+
+	//Wall following
+    void wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu, PIDController* headingPID);
+
+	//Other
+    float wrap180(float angle);
 };
 
 #endif

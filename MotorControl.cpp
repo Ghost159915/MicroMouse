@@ -4,10 +4,24 @@ MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
     : mot1_pwm(m1_pwm), mot1_dir(m1_dir),
       mot2_pwm(m2_pwm), mot2_dir(m2_dir),
       wallApproachActive(false), wallApproachStart(0),
-      commandIndex(0), commandActive(false), moveInProgress(false), moveStartTime(0) {}
+      commandIndex(0), commandActive(false), moveInProgress(false), moveStartTime(0),
+	  turnInProgress(false), turnTargetYaw(0.0f), turnPID(nullptr) {}
+
+void MotorController::begin() {
+    pinMode(mot1_pwm, OUTPUT);
+    pinMode(mot1_dir, OUTPUT);
+    pinMode(mot2_pwm, OUTPUT);
+    pinMode(mot2_dir, OUTPUT);
+}
+
+float MotorController::wrap180(float angle) {
+    while (angle > 180.0) angle -= 360.0;
+    while (angle < -180.0) angle += 360.0;
+    return angle;
+}
 
 void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, float dt, float basePWM) {
-    imu->update();
+	imu->update();
 
     float error = wrap180(headingTarget - imu->yaw());
 
@@ -22,20 +36,6 @@ void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, floa
     digitalWrite(mot2_dir, LOW);
     analogWrite(mot1_pwm, leftPWM);
     analogWrite(mot2_pwm, rightPWM);
-
-}
-
-void MotorController::begin() {
-    pinMode(mot1_pwm, OUTPUT);
-    pinMode(mot1_dir, OUTPUT);
-    pinMode(mot2_pwm, OUTPUT);
-    pinMode(mot2_dir, OUTPUT);
-}
-
-float MotorController::wrap180(float angle) {
-    while (angle > 180.0) angle -= 360.0;
-    while (angle < -180.0) angle += 360.0;
-    return angle;
 }
 
 void MotorController::moveForward(int pwmVal) {
@@ -76,55 +76,38 @@ void MotorController::stop() {
 }
 
 // === Precise Turns ===
-void MotorController::PIDturn90CW(IMU* imu, PIDController* turnPID) {
-    turnPID->reset();
+
+void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID) {
     imu->update();
-    float targetAngle = wrap180(imu->yaw() - 90.0);
-    unsigned long lastTime = millis();
-	unsigned long start = millis();
+    float startYaw = imu->yaw();
+    float delta    = (direction == 'R') ? +90.0f : -90.0f;
+    turnTargetYaw  = wrap180(startYaw + delta);
+    turnInProgress = true;
+    turnPID->reset();
+}
 
-    while (true) {
-        imu->update();
-        unsigned long now = millis();
-        float dt = max((now - lastTime) / 1000.0f, 0.001f);
-        lastTime = now;
-        float error = wrap180(targetAngle - imu->yaw());
-
-		if (millis() - start > 1500) {
-			stop();
-			break;
-		}
-        float control = turnPID->compute(0.0, -error, dt);
-        int pwm = constrain(abs(control), 0, 255);
-        if (error > 0) spinCCW(pwm);
-        else spinCW(pwm);
-        //delay(10);
+bool MotorController::updateTurn(IMU* imu, float dt) {
+    if (!turnInProgress) return true;
+    imu->update();
+    float err = wrap180(turnTargetYaw - imu->yaw());
+    float corr = turnPID->compute(0.0f, -err, dt);
+    int pwm = constrain((int)fabs(corr), 0, 255);
+    if (err > 0) spinCCW(pwm);
+    else         spinCW(pwm);
+    if (fabs(err) < 1.0f) {
+        stop();
+        turnInProgress = false;
+        return true;
     }
+    return false;
+}
+
+void MotorController::PIDturn90CW(IMU* imu, PIDController* turnPID) {
+    startTurn('R', imu, turnPID);
 }
 
 void MotorController::PIDturn90CCW(IMU* imu, PIDController* turnPID) {
-    turnPID->reset();
-    imu->update();
-    float targetAngle = wrap180(imu->yaw() + 90.0);
-    unsigned long lastTime = millis();
-	unsigned long start = millis();
-
-    while (true) {
-        imu->update();
-        unsigned long now = millis();
-        float dt = max((now - lastTime) / 1000.0f, 0.001f);
-        lastTime = now;
-        float error = wrap180(targetAngle - imu->yaw());
-		if (millis() - start > 1500) {
-			stop();
-			break;
-		}
-        float control = turnPID->compute(0.0, -error, dt);
-        int pwm = constrain(abs(control), 0, 255);
-        if (error > 0) spinCCW(pwm);
-        else spinCW(pwm);
-        //delay(10);
-    }
+    startTurn('L', imu, turnPID);
 }
 
 // === Return to Heading ===
@@ -145,7 +128,6 @@ void MotorController::returnToHeading(IMU* imu, PIDController* turnPID, float ta
         int pwm = constrain(abs(control), 0, 255);
         if (error > 0) spinCCW(pwm);
         else spinCW(pwm);
-        //delay(10);
     }
 
     imu->update();
@@ -168,7 +150,9 @@ float MotorController::waitForRotation(IMU* imu) {
 }
 
 // === Wall Following ===
-void MotorController::wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState) {
+
+
+void MotorController::wallApproach(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu, PIDController* headingPID) {
     if (!wallApproachActive) {
         Serial.println("WALL_APPROACH: Starting 20-second interaction");
         wallApproachActive = true;
@@ -181,9 +165,10 @@ void MotorController::wallApproach(LidarSensor* lidar, PIDController* DistancePI
         *currentState = COMMAND_CHAIN;
         return;
     }
-
     // === Moving average smoothing ===
-#define WINDOW_SIZE 5
+
+    const int WINDOW_SIZE = 5;
+
     static float distanceWindow[WINDOW_SIZE] = {100, 100, 100, 100, 100};
     static int windowIndex = 0;
 
@@ -197,25 +182,17 @@ void MotorController::wallApproach(LidarSensor* lidar, PIDController* DistancePI
     }
     smoothedDistance /= WINDOW_SIZE;
 
-    float currentDistance = smoothedDistance;
-    float error = 100.0 - currentDistance;
+    float error = 100.0 - smoothedDistance;
 
     // === Deadzone handling ===
     if (abs(error) < 3.0) {
         stop();
     } else {
-        float control = DistancePID->compute(0.0, -error, dt);
-        int pwm = constrain(abs(control), 0, 255);
-
-        if (error > 0) moveBackward(pwm);
-        else           moveForward(pwm);
+        float control = DistancePID->compute(0.0f, -error, dt);
+        float pwm = constrain(abs(control), 0, 255);
+        float basePWM = (error > 0) ? -pwm : pwm;
+        driveStraightIMU(imu, headingPID, dt, basePWM);
     }
-
-    // === Debug Output ===
-    Serial.print("RAW: "); Serial.print(rawDistance);
-    Serial.print("  AVG: "); Serial.print(currentDistance);
-    Serial.print("  ERR: "); Serial.print(error);
-    Serial.print("  PWM: "); Serial.println((abs(error) < 3.0) ? 0 : constrain(abs(DistancePID->compute(0.0, -error, dt)), 0, 255));
 }
 
 // === Command Chain Control ===
@@ -263,14 +240,14 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
             headingTarget = imu->yaw();  // Set target heading
             headingPID->reset();         // Reset heading PID
         }
-        else if (currentCmd == 'R') {
-            PIDturn90CW(imu, turnPID);
-            commandIndex++;
+        else if (currentCmd=='R' || currentCmd=='L') {
+            if (!turnInProgress) {
+				startTurn(currentCmd, imu, turnPID);
+			} else if (updateTurn(imu, dt)) {
+				commandIndex++;
+			}
         }
-        else if (currentCmd == 'L') {
-            PIDturn90CCW(imu, turnPID);
-            commandIndex++;
-        }
+
         else {
             commandIndex++;
         }
@@ -278,7 +255,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
     else {
         float total_count = CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV;
         if (encoder->getTicks() < total_count && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-            driveStraightIMU(imu, headingPID, dt, 150);  // Use IMU-corrected forward drive
+            driveStraightIMU(imu, headingPID, dt, 150);
         }
         else {
             stop();

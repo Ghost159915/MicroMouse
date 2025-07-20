@@ -78,7 +78,7 @@ void loop() {
             display.showLidarDistance(lidar.getLeftDistance(),
                                       lidar.getFrontDistance(),
                                       lidar.getRightDistance());
-            motors.wallApproach(&lidar, &DistancePID, dt, &currentState);
+            motors.wallApproach(&lidar, &DistancePID, dt, &currentState, &imu, &HeadingPID);
             break;
 
         case COMMAND_CHAIN:
@@ -92,30 +92,6 @@ void loop() {
             break;
 
         case TEST:
-            display.showState("TEST");
-
-            static bool started = false;
-            static unsigned long moveStart = 0;
-
-            if (!started) {
-                encoder.reset();
-                imu.update();
-                float headingTarget = imu.yaw();
-                HeadingPID.reset();
-                moveStart = millis();
-                started = true;
-                Serial.println("TEST: Driving straight for 1m");
-            }
-
-            float distance = encoder.getTicks() / (float)TICKS_PER_REV * (2 * PI * RADIUS);
-
-            if (distance < 1000.0f && (millis() - moveStart) < 4000) {
-                motors.driveStraightIMU(&imu, &HeadingPID, dt, 150);
-            } else {
-                motors.stop();
-                Serial.println("TEST: Done");
-                currentState = COMPLETE;
-            }
             break;
 
         default:
