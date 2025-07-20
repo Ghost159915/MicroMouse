@@ -38,22 +38,6 @@ void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, floa
     analogWrite(mot2_pwm, rightPWM);
 }
 
-void MotorController::moveForward(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
-    digitalWrite(mot1_dir, HIGH);
-    analogWrite(mot1_pwm, pwmVal);
-    digitalWrite(mot2_dir, LOW);
-    analogWrite(mot2_pwm, pwmVal);
-}
-
-void MotorController::moveBackward(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
-    digitalWrite(mot1_dir, LOW);
-    analogWrite(mot1_pwm, pwmVal);
-    digitalWrite(mot2_dir, HIGH);
-    analogWrite(mot2_pwm, pwmVal);
-}
-
 void MotorController::spinCW(int pwmVal) {
     pwmVal = constrain(pwmVal, 0, 255);
     digitalWrite(mot1_dir, LOW);
@@ -76,7 +60,6 @@ void MotorController::stop() {
 }
 
 // === Precise Turns ===
-
 void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID) {
     imu->update();
     float startYaw = imu->yaw();
