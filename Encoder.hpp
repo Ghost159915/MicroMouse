@@ -10,7 +10,7 @@ private:
     volatile long ticks;
 
     static Encoder* instance;
-    static void isr();  // declared here, defined in .cpp
+    static void isr();
 
 public:
     Encoder(int a = 2, int b = 7);

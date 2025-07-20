@@ -1,4 +1,4 @@
-#include "../include/LidarSensor.hpp"
+#include "LidarSensor.hpp"
 #include <Arduino.h>
 
 void LidarSensor::begin() {

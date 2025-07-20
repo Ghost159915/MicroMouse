@@ -19,7 +19,8 @@ enum states {
     RETURN_TO_HEADING,
     WALL_APPROACH,
     COMMAND_CHAIN,
-    COMPLETE
+    COMPLETE,
+    TEST
 };
 
 class MotorController {
@@ -37,9 +38,14 @@ private:
     bool commandActive;
     bool moveInProgress;
     unsigned long moveStartTime;
+    float headingTarget;
 
 public:
     MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir);
+
+
+    void driveStraightIMU(IMU* imu, PIDController* headingPID, float dt, float basePWM);
+
 
     void begin();
     float wrap180(float angle);
@@ -59,7 +65,7 @@ public:
 
     void startCommandChain(const char* cmd);
     bool isCommandActive();
-    void processCommandStep(PIDController* controller, Encoder* encoder, IMU* imu, states* currentState);
+    void processCommandStep(PIDController* turnPID, PIDController* headingPID, Encoder* encoder, IMU* imu, states* currentState, float dt);
 };
 
 #endif

@@ -1,4 +1,4 @@
-#include "../include/IMU.hpp"
+#include "IMU.hpp"
 #include <Wire.h>
 
 IMU::IMU() : _addr(0x68), _rawGyroZ(0), _gyroBiasZ(0), _yaw(0), _prevMicros(0) {}

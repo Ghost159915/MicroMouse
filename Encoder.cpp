@@ -1,4 +1,4 @@
-#include "../include/Encoder.hpp"
+#include "Encoder.hpp"
 
 Encoder* Encoder::instance = nullptr;
 

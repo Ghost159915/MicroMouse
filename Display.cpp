@@ -1,4 +1,4 @@
-#include "../include/Display.hpp"
+#include "Display.hpp"
 #include <Arduino.h>
 
 Display::Display(float radius, int ticks)

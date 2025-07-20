@@ -1,29 +1,33 @@
-#include "include/MotorControl.hpp"
-#include "include/Encoder.hpp"
-#include "include/Display.hpp"
-#include "include/PIDController.hpp"
-#include "include/LidarSensor.hpp"
-#include "include/IMU.hpp"
+#include "MotorControl.hpp"
+#include "Encoder.hpp"
+#include "Display.hpp"
+#include "PIDController.hpp"
+#include "LidarSensor.hpp"
+#include "IMU.hpp"
 #include <Wire.h>
 
-//RFRFFLFLFFRFFRFFLFFFRFLFRF
-//LFLFLFLFLFLFLFLFLFLFLFLFLFLFLFLF
-//RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
+// RFRFFLFLFFRFFRFFLFFFRFLFRF
+// LFLFLFLFLFLFLFLFLFLFLFLFLFLFLFLF
+// RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
 
 const float WHEEL_RADIUS = 16.0;
-const char* command = "RLF"; // 4X 32 CMD
+const char* command = "FFRFFLFF";
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
 Display display(WHEEL_RADIUS, TICKS_PER_REV);
+
 PIDController DistancePID(1.5, 0.0, 0.25, 0.0);
-PIDController TurningPID(2.0, 0.48, 0.0, 0.0);
+PIDController TurningPID(2.0, 0.5, 0.0, 0.0);
+PIDController HeadingPID(1.2, 0.0, 0.05, 0.0);
+
 LidarSensor lidar;
 IMU imu;
 
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
-states currentState = STARTUP_TURN;
+
+states currentState = TEST;
 
 void setup() {
     Serial.begin(9600);
@@ -39,7 +43,6 @@ void setup() {
     lastTime = millis();
 
     motors.startCommandChain(command);
-    // currentState = COMMAND_CHAIN;
 }
 
 void loop() {
@@ -50,7 +53,7 @@ void loop() {
 
     imu.update();
 
-    switch(currentState) {
+    switch (currentState) {
         case STARTUP_TURN:
             display.showState("STARTUP_TURN");
             display.showIMUReading(imu.yaw());
@@ -72,7 +75,6 @@ void loop() {
             break;
 
         case WALL_APPROACH:
-            // display.showState("WALL_APPROACH");
             display.showLidarDistance(lidar.getLeftDistance(),
                                       lidar.getFrontDistance(),
                                       lidar.getRightDistance());
@@ -81,7 +83,7 @@ void loop() {
 
         case COMMAND_CHAIN:
             display.showState("COMMAND_CHAIN");
-            motors.processCommandStep(&TurningPID, &encoder, &imu, &currentState);
+            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
             break;
 
         case COMPLETE:
@@ -89,13 +91,36 @@ void loop() {
             motors.stop();
             break;
 
+        case TEST:
+            display.showState("TEST");
+
+            static bool started = false;
+            static unsigned long moveStart = 0;
+
+            if (!started) {
+                encoder.reset();
+                imu.update();
+                float headingTarget = imu.yaw();
+                HeadingPID.reset();
+                moveStart = millis();
+                started = true;
+                Serial.println("TEST: Driving straight for 1m");
+            }
+
+            float distance = encoder.getTicks() / (float)TICKS_PER_REV * (2 * PI * RADIUS);
+
+            if (distance < 1000.0f && (millis() - moveStart) < 4000) {
+                motors.driveStraightIMU(&imu, &HeadingPID, dt, 150);
+            } else {
+                motors.stop();
+                Serial.println("TEST: Done");
+                currentState = COMPLETE;
+            }
+            break;
+
         default:
             display.showState("UNKNOWN");
             motors.stop();
             break;
     }
-
-    
-
 }
- 

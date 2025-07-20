@@ -1,10 +1,29 @@
-#include "../include/MotorControl.hpp"
+#include "MotorControl.hpp"
 
 MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
     : mot1_pwm(m1_pwm), mot1_dir(m1_dir),
       mot2_pwm(m2_pwm), mot2_dir(m2_dir),
       wallApproachActive(false), wallApproachStart(0),
       commandIndex(0), commandActive(false), moveInProgress(false), moveStartTime(0) {}
+
+void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, float dt, float basePWM) {
+    imu->update();
+
+    float error = wrap180(headingTarget - imu->yaw());
+
+    if (abs(error) < 1.0) error = 0.0;
+
+    float correction = headingPID->compute(0.0, -error, dt);
+
+    int leftPWM = constrain(basePWM + correction, 0, 255);
+    int rightPWM = constrain(basePWM - correction, 0, 255);
+
+    digitalWrite(mot1_dir, HIGH);
+    digitalWrite(mot2_dir, LOW);
+    analogWrite(mot1_pwm, leftPWM);
+    analogWrite(mot2_pwm, rightPWM);
+
+}
 
 void MotorController::begin() {
     pinMode(mot1_pwm, OUTPUT);
@@ -62,6 +81,7 @@ void MotorController::PIDturn90CW(IMU* imu, PIDController* turnPID) {
     imu->update();
     float targetAngle = wrap180(imu->yaw() - 90.0);
     unsigned long lastTime = millis();
+	unsigned long start = millis();
 
     while (true) {
         imu->update();
@@ -69,12 +89,16 @@ void MotorController::PIDturn90CW(IMU* imu, PIDController* turnPID) {
         float dt = max((now - lastTime) / 1000.0f, 0.001f);
         lastTime = now;
         float error = wrap180(targetAngle - imu->yaw());
-        if (abs(error) < 0.5) { stop(); break; }
+
+		if (millis() - start > 1500) {
+			stop();
+			break;
+		}
         float control = turnPID->compute(0.0, -error, dt);
         int pwm = constrain(abs(control), 0, 255);
         if (error > 0) spinCCW(pwm);
         else spinCW(pwm);
-        delay(10);
+        //delay(10);
     }
 }
 
@@ -83,6 +107,7 @@ void MotorController::PIDturn90CCW(IMU* imu, PIDController* turnPID) {
     imu->update();
     float targetAngle = wrap180(imu->yaw() + 90.0);
     unsigned long lastTime = millis();
+	unsigned long start = millis();
 
     while (true) {
         imu->update();
@@ -90,12 +115,15 @@ void MotorController::PIDturn90CCW(IMU* imu, PIDController* turnPID) {
         float dt = max((now - lastTime) / 1000.0f, 0.001f);
         lastTime = now;
         float error = wrap180(targetAngle - imu->yaw());
-        if (abs(error) < 0.5) { stop(); break; }
+		if (millis() - start > 1500) {
+			stop();
+			break;
+		}
         float control = turnPID->compute(0.0, -error, dt);
         int pwm = constrain(abs(control), 0, 255);
         if (error > 0) spinCCW(pwm);
         else spinCW(pwm);
-        delay(10);
+        //delay(10);
     }
 }
 
@@ -117,7 +145,7 @@ void MotorController::returnToHeading(IMU* imu, PIDController* turnPID, float ta
         int pwm = constrain(abs(control), 0, 255);
         if (error > 0) spinCCW(pwm);
         else spinCW(pwm);
-        delay(10);
+        //delay(10);
     }
 
     imu->update();
@@ -132,7 +160,7 @@ float MotorController::waitForRotation(IMU* imu) {
     unsigned long startMillis = millis();
     while (millis() - startMillis < 10000) {
         imu->update();
-        delay(5);
+        //delay(5);
     }
     imu->update();
     float endHeading = imu->yaw();
@@ -204,7 +232,7 @@ bool MotorController::isCommandActive() {
     return commandActive;
 }
 
-void MotorController::processCommandStep(PIDController* controller, Encoder* encoder, IMU* imu, states* currentState) {
+void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, Encoder* encoder, IMU* imu, states* currentState, float dt) {
     Serial.print("PROCESS_COMMAND: active=");
     Serial.println(commandActive ? "true" : "false");
 
@@ -231,13 +259,16 @@ void MotorController::processCommandStep(PIDController* controller, Encoder* enc
         if (currentCmd == 'F') {
             moveInProgress = true;
             moveStartTime = millis();
+            imu->update();
+            headingTarget = imu->yaw();  // Set target heading
+            headingPID->reset();         // Reset heading PID
         }
         else if (currentCmd == 'R') {
-            PIDturn90CW(imu, controller);
+            PIDturn90CW(imu, turnPID);
             commandIndex++;
         }
         else if (currentCmd == 'L') {
-            PIDturn90CCW(imu, controller);
+            PIDturn90CCW(imu, turnPID);
             commandIndex++;
         }
         else {
@@ -247,7 +278,7 @@ void MotorController::processCommandStep(PIDController* controller, Encoder* enc
     else {
         float total_count = CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV;
         if (encoder->getTicks() < total_count && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-            moveForward(150);
+            driveStraightIMU(imu, headingPID, dt, 150);  // Use IMU-corrected forward drive
         }
         else {
             stop();

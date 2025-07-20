@@ -1,4 +1,4 @@
-#include "../include/PIDController.hpp"
+#include "PIDController.hpp"
 
 PIDController::PIDController(float p, float i, float d, float smoothing)
     : Kp(p), Ki(i), Kd(d), integral(0), prevMeasured(0), lastDerivative(0), alpha(smoothing) {}
