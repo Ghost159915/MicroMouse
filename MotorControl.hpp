@@ -56,8 +56,7 @@ public:
 
 	//Basic motion
     void driveStraightIMU(IMU* imu, PIDController* headingPID, float dt, float basePWM);
-    void moveForward(int pwmVal);
-    void moveBackward(int pwmVal);
+
     void spinCW(int pwmVal);
     void spinCCW(int pwmVal);
     void stop();
