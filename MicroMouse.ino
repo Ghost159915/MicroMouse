@@ -10,8 +10,6 @@
 // LFLFLFLFLFLFLFLFLFLFLFLFLFLFLFLF
 // RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
 
-const char* command = "FFRFFLFF";
-
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
 Display display(RADIUS, TICKS_PER_REV);
@@ -39,7 +37,7 @@ void setup() {
     lidar.begin();
     imu.calibrate();
     lastTime = millis();
-    motors.startCommandChain(command);
+    motors.startCommandChain("FFRFFLFF");
 }
 
 void loop() {

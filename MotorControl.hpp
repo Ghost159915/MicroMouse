@@ -43,6 +43,7 @@ public:
 
     // Command chain
     void startCommandChain(const char* cmd);
+    void resetInternalState();
     void processCommandStep(PIDController* turnPID, PIDController* headingPID, Encoder* encoder, IMU* imu, states* currentState, float dt);
 
     // Startup sequence handlers

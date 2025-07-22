@@ -2,7 +2,7 @@
 
 MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
     : mot1_pwm(m1_pwm), mot1_dir(m1_dir),
-    mot2_pwm(m2_pwm), mot2_dir(m2_dir), commandIndex(0), commandActive(true),
+    mot2_pwm(m2_pwm), mot2_dir(m2_dir), commandIndex(0), commandActive(false),
     moveInProgress(false), moveStartTime(0), turnInProgress(false), turnTargetYaw(0.0f),
     turnPID(nullptr), turnStartTime(0), startupInitiated(false), startupYaw(0.0f),
     waitStart(0), rotationOffset(0.0f), wallApproachActive(false), wallApproachStart(0),
@@ -30,13 +30,22 @@ void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, floa
     if (abs(error) < 1.0) error = 0.0;
     float correction = headingPID->compute(0.0, -error, dt);
 
+    int pwmLeft = basePWM + correction;
+    int pwmRight = basePWM - correction;
+
     int leftPWM = constrain(basePWM + correction, 0, 255);
     int rightPWM = constrain(basePWM - correction, 0, 255);
 
-    digitalWrite(mot1_dir, HIGH);
-    digitalWrite(mot2_dir, LOW);
-    analogWrite(mot1_pwm, leftPWM);
-    analogWrite(mot2_pwm, rightPWM);
+    bool leftForward = pwmLeft >= 0;
+    bool rightForward = pwmRight >= 0;
+
+    pwmLeft = constrain(abs(pwmLeft), 0, 255);
+    pwmRight = constrain(abs(pwmRight), 0, 255);
+
+    digitalWrite(mot1_dir, leftForward ? HIGH : LOW);
+    digitalWrite(mot2_dir, rightForward ? LOW : HIGH); // Assuming LOW = forward for one, HIGH for the other
+    analogWrite(mot1_pwm, pwmLeft);
+    analogWrite(mot2_pwm, pwmRight);
 }
 
 void MotorController::spinCW(int pwmVal) {
@@ -166,6 +175,7 @@ void MotorController::startCommandChain(const char* cmd) {
     commandIndex = 0;
     commandActive = true;
     moveInProgress = false;
+    resetInternalState();
 }
 
 void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, Encoder* encoder, IMU* imu, states* currentState, float dt) {
@@ -190,7 +200,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
             while (commandBuffer[commandIndex + forwardRunLength] == 'F') {
                 forwardRunLength++;
             }
-            forwardTargetTicks = forwardRunLength * (CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV);
+            forwardTargetTicks = round(forwardRunLength * (CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV));
 
             moveInProgress = true;
             moveStartTime = millis();
@@ -221,4 +231,18 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
             commandIndex++;
         }
     }
+}
+
+void MotorController::resetInternalState() {
+    turnInProgress = false;
+    startupInitiated = false;
+    wallApproachActive = false;
+    wallApproachStart = 0;
+    waitStart = 0;
+    rotationOffset = 0.0f;
+    headingTarget = 0.0f;
+    forwardTargetTicks = 0;
+    forwardRunLength = 0;
+    wallBufferIndex = 0;
+    for (int i = 0; i < 5; ++i) wallDistanceBuffer[i] = 100.0f;
 }
