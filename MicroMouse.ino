@@ -10,12 +10,11 @@
 // LFLFLFLFLFLFLFLFLFLFLFLFLFLFLFLF
 // RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
 
-const float WHEEL_RADIUS = 16.0;
 const char* command = "FFRFFLFF";
 
 MotorController motors(11, 12, 9, 10);
 Encoder encoder(2, 7);
-Display display(WHEEL_RADIUS, TICKS_PER_REV);
+Display display(RADIUS, TICKS_PER_REV);
 
 PIDController DistancePID(1.5, 0.0, 0.25, 0.0);
 PIDController TurningPID(2.0, 0.5, 0.0, 0.0);
@@ -27,7 +26,7 @@ IMU imu;
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
 
-states currentState = TEST;
+states currentState = STARTUP_TURN;
 
 void setup() {
     Serial.begin(9600);
@@ -39,9 +38,7 @@ void setup() {
     encoder.begin();
     lidar.begin();
     imu.calibrate();
-
     lastTime = millis();
-
     motors.startCommandChain(command);
 }
 
@@ -50,28 +47,25 @@ void loop() {
     float dt = (now - lastTime) / 1000.0;
     if (dt < 0.001) dt = 0.001;
     lastTime = now;
-
     imu.update();
 
     switch (currentState) {
         case STARTUP_TURN:
             display.showState("STARTUP_TURN");
+            motors.startupTurn(&imu, &TurningPID, dt, currentState);
             display.showIMUReading(imu.yaw());
-            motors.PIDturn90CW(&imu, &TurningPID);
-            currentState = WAIT_FOR_ROTATION;
             break;
 
         case WAIT_FOR_ROTATION:
             display.showState("WAIT_ROTATE");
-            rotationOffset = motors.waitForRotation(&imu);
-            currentState = RETURN_TO_HEADING;
+            motors.waitForRotation(&imu, &TurningPID, currentState);
+            display.showIMUReading(imu.yaw());
             break;
 
         case RETURN_TO_HEADING:
             display.showState("RETURN_HEADING");
-            motors.returnToHeading(&imu, &TurningPID, rotationOffset);
-            delay(5000);
-            currentState = WALL_APPROACH;
+            motors.returnToHeading(&imu, &TurningPID, dt, currentState);
+            display.showIMUReading(imu.yaw());
             break;
 
         case WALL_APPROACH:
@@ -89,9 +83,6 @@ void loop() {
         case COMPLETE:
             display.showState("COMPLETE");
             motors.stop();
-            break;
-
-        case TEST:
             break;
 
         default:

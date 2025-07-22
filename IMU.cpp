@@ -8,7 +8,6 @@ void IMU::begin() {
     Wire.write(0x6B);
     Wire.write(0);
     Wire.endTransmission();
-    delay(100);
 }
 
 void IMU::calibrate(uint16_t samples) {
@@ -16,7 +15,6 @@ void IMU::calibrate(uint16_t samples) {
     for (uint16_t i = 0; i < samples; ++i) {
         _readRaw();
         sumZ += _rawGyroZ;
-        delay(2);
     }
     _gyroBiasZ = sumZ / samples;
 }

@@ -6,14 +6,11 @@ Display::Display(float radius, int ticks)
 
 void Display::begin() {
     oled.begin();
-
     oled.firstPage();
     do {
         oled.setFont(u8g2_font_5x8_tr);
         oled.drawStr(0, 12, "OLED Booting!");
     } while (oled.nextPage());
-
-    delay(500);
 }
 
 void Display::showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance) {
@@ -39,7 +36,6 @@ void Display::showLidarDistance(int LeftDistance, int FrontDistance, int RightDi
 void Display::showIMUReading(int angle) {
     char buffer[16];
     snprintf(buffer, sizeof(buffer), "%d deg", angle);
-
     oled.firstPage();
     do {
         oled.setFont(u8g2_font_5x8_tr);

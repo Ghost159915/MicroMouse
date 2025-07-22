@@ -11,26 +11,23 @@ void LidarSensor::begin() {
     digitalWrite(FrontPin, LOW);
     digitalWrite(LeftPin, LOW);
     digitalWrite(RightPin, LOW);
-    delay(10);
 
     digitalWrite(FrontPin, HIGH);
-    delay(50);
+
     FrontLidar.init();
     FrontLidar.configureDefault();
     FrontLidar.setTimeout(250);
     FrontLidar.setAddress(0x54);
-    delay(50);
 
     digitalWrite(LeftPin, HIGH);
-    delay(50);
+
     LeftLidar.init();
     LeftLidar.configureDefault();
     LeftLidar.setTimeout(250);
     LeftLidar.setAddress(0x56);
-    delay(50);
 
     digitalWrite(RightPin, HIGH);
-    delay(50);
+
     RightLidar.init();
     RightLidar.configureDefault();
     RightLidar.setTimeout(250);
