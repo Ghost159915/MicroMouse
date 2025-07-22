@@ -66,22 +66,29 @@ void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID
     float delta    = (direction == 'R') ? +90.0f : -90.0f;
     turnTargetYaw  = wrap180(startYaw + delta);
     turnInProgress = true;
+    turnStartTime  = millis();
     turnPID->reset();
 }
 
 bool MotorController::updateTurn(IMU* imu, float dt) {
     if (!turnInProgress) return true;
+
     imu->update();
+
     float err = wrap180(turnTargetYaw - imu->yaw());
     float corr = turnPID->compute(0.0f, -err, dt);
+
     int pwm = constrain((int)fabs(corr), 0, 255);
+
     if (err > 0) spinCCW(pwm);
     else         spinCW(pwm);
-    if (fabs(err) < 1.0f) {
+
+    if (millis() - turnStartTime >= TURN_DURATION_MS) {
         stop();
         turnInProgress = false;
         return true;
     }
+
     return false;
 }
 

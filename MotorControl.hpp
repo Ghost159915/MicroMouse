@@ -35,6 +35,9 @@ private:
     bool wallApproachActive;
     unsigned long wallApproachStart;
 
+	unsigned long turnStartTime;
+ 	static constexpr unsigned long TURN_DURATION_MS = 1500;
+
     char commandBuffer[64];
     int commandIndex;
     bool commandActive;
