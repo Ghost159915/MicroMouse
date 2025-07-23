@@ -29,13 +29,13 @@ states currentState = STARTUP_TURN;
 void setup() {
     Serial.begin(9600);
     Wire.begin();
-    delay(2000);
     display.begin();
     imu.begin();
     motors.begin();
     encoder.begin();
     lidar.begin();
     imu.calibrate();
+    delay(2000);
     lastTime = millis();
     motors.startCommandChain("FFRFFLFF");
 }

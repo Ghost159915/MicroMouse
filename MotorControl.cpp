@@ -43,7 +43,7 @@ void MotorController::driveStraightIMU(IMU* imu, PIDController* headingPID, floa
     pwmRight = constrain(abs(pwmRight), 0, 255);
 
     digitalWrite(mot1_dir, leftForward ? HIGH : LOW);
-    digitalWrite(mot2_dir, rightForward ? LOW : HIGH); // Assuming LOW = forward for one, HIGH for the other
+    digitalWrite(mot2_dir, rightForward ? LOW : HIGH);
     analogWrite(mot1_pwm, pwmLeft);
     analogWrite(mot2_pwm, pwmRight);
 }
@@ -126,7 +126,13 @@ void MotorController::waitForRotation(IMU* imu, PIDController* turnPID, states& 
 
 void MotorController::returnToHeading(IMU* imu, PIDController* turnPID, float dt, states& currentState) {
     if (updateTurn(imu, dt)) {
+		if (rotationRound < 1) {
+			rotationRound++;
+            currentState = WAIT_FOR_ROTATION;
+            waitStart = millis();
+		} else {
         currentState = WALL_APPROACH;
+		}
     }
 }
 

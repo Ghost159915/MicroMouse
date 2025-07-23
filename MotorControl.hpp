@@ -84,6 +84,8 @@ private:
 
     int forwardRunLength = 0;
     unsigned long forwardTargetTicks = 0;
+    int rotationRound = 0;
+
 };
 
 #endif

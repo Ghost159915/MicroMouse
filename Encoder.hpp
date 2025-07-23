@@ -5,8 +5,7 @@
 
 class Encoder {
 private:
-    int encA;
-    int encB;
+    int encA, encB;
     volatile long ticks;
 
     static Encoder* instance;
