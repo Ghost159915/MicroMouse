@@ -190,11 +190,10 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
         *currentState = COMPLETE;
         return;
     }
-    if (commandBuffer[commandIndex] == '\0') {
+    if (commandIndex >= sizeof(commandBuffer) - 1 || commandBuffer[commandIndex] == '\0') {
         commandActive = false;
         stop();
         *currentState = COMPLETE;
-        Serial.println("COMMAND_CHAIN: Finished!");
         return;
     }
 
@@ -203,40 +202,63 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
     if (!moveInProgress) {
         if (currentCmd == 'F') {
             forwardRunLength = 1;
-            while (commandBuffer[commandIndex + forwardRunLength] == 'F') {
+			int checkIndex = commandIndex + 1;
+
+            while (checkIndex < sizeof(commandBuffer) - 1 &&    // Don't go past buffer
+                   commandBuffer[checkIndex] != '\0' &&          // Stop at null terminator
+                   commandBuffer[checkIndex] == 'F' &&           // Check if it's an F
+                   forwardRunLength < 10) {                      // Reasonable limit
                 forwardRunLength++;
+                checkIndex++;
             }
-            forwardTargetTicks = round(forwardRunLength * (CELL_DISTANCE / (2 * PI * RADIUS) * TICKS_PER_REV));
+
+            float cellsToMove = forwardRunLength;
+            float wheelCircumference = 2.0f * PI * RADIUS;
+            float distanceToMove = cellsToMove * CELL_DISTANCE;
+            float rotations = distanceToMove / wheelCircumference;
+            forwardTargetTicks = (unsigned long)round(rotations * TICKS_PER_REV);
 
             moveInProgress = true;
             moveStartTime = millis();
+
             imu->update();
             headingTarget = imu->yaw();
+
             headingPID->reset();
             encoder->reset();
         }
         else if (currentCmd=='R' || currentCmd=='L') {
-            if (!turnInProgress) {
-                stop();
-				startTurn(currentCmd, imu, turnPID);
-			} else if (updateTurn(imu, dt)) {
-				commandIndex++;
-			}
+            startTurn(currentCmd, imu, turnPID);
+            moveInProgress = true;
         }
         else {
             commandIndex++;
         }
     }
     else {
-        if (encoder->getTicks() < forwardTargetTicks && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-            driveStraightIMU(imu, headingPID, dt, 150);
-        }
-        else {
-            stop();
-            moveInProgress = false;
-            commandIndex++;
-        }
-    }
+        if (currentCmd == 'F') {
+			long currentTicks = encoder->getTicks();
+			unsigned long elapsed = millis() - moveStartTime;
+
+			if (currentTicks < forwardTargetTicks && elapsed < MOVE_TIMEOUT) {
+				driveStraightIMU(imu, headingPID, dt, DEFAULT_FORWARD_PWM);
+			}
+        	else {
+            	stop();
+            	moveInProgress = false;
+				commandIndex += forwardRunLength;
+				forwardRunLength = 0;
+            	forwardTargetTicks = 0;
+	    	}
+    	}
+		else if (currentCmd == 'R' || currentCmd == 'L') {
+			if (updateTurn(imu, dt)) {
+				stop();
+            	moveInProgress = false;
+            	commandIndex++;
+			}
+		}
+	}
 }
 
 void MotorController::resetInternalState() {

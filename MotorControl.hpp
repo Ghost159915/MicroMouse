@@ -13,6 +13,7 @@ static constexpr float RADIUS          = 16.0f;
 static constexpr unsigned long MOVE_TIMEOUT = 3000;  // ms
 static constexpr unsigned long TURN_DURATION_MS = 1500; // ms
 static constexpr unsigned long WALL_APPROACH_MS = 20000;
+static constexpr unsigned long DEFAULT_FORWARD_PWM = 150;
 
 enum states {
     STARTUP_TURN,
