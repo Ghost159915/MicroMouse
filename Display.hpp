@@ -17,8 +17,6 @@ public:
     void showIMUReading(int angle);
     void showState(const char* stateName);
     void showCommandStatus(const char* stateName, char currentCmd, float heading);
-
-
 };
 
 #endif
