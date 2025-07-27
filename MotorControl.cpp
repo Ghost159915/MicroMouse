@@ -78,14 +78,14 @@ void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID
 
 bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
     if (!turnInProgress) return true;
-    
+
     imu->update();
     float currentYaw = imu->yaw();
     float err = wrap180(currentYaw - turnTargetYaw);
 
     float corr = turnPID->compute(0.0, err, dt);
     int pwm = constrain(abs(corr), 0, 255);
-    
+
     if (corr > 0) {
         spinCCW(pwm);
     } else {
@@ -104,18 +104,17 @@ bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
 }
 
 void MotorController::startCommandChain(const char* cmd) {
-    strncpy(commandBuffer, cmd, COMMAND_BUFFER_SIZE - 1);
-    commandBuffer[COMMAND_BUFFER_SIZE - 1] = '\0';
+    strncpy(commandBuffer, cmd, sizeof(commandBuffer) - 1);
+    commandBuffer[sizeof(commandBuffer) - 1] = '\0';
     commandIndex = 0;
     commandActive = true;
     moveInProgress = false;
     resetInternalState();
 }
 
-void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, 
+void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID,
                                          DualEncoder* encoder, IMU* imu, states* currentState, float dt) {
-
-    if (!commandActive || commandIndex >= COMMAND_BUFFER_SIZE || commandBuffer[commandIndex] == '\0') {
+    if (!commandActive || commandBuffer[commandIndex] == '\0') {
         stop();
         *currentState = COMPLETE;
         return;
@@ -126,23 +125,22 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
     if (!moveInProgress) {
         if (cmd == 'F') {
             forwardRunLength = 1;
+            while (commandBuffer[commandIndex + forwardRunLength] == 'F' &&
+                   commandIndex + forwardRunLength < sizeof(commandBuffer) - 1 &&
+                   forwardRunLength < 10) {
+                forwardRunLength++;
+            }
 
-        	while ((commandIndex + forwardRunLength) < (COMMAND_BUFFER_SIZE - 1) &&
-                	forwardRunLength < 10 &&
-                	commandBuffer[commandIndex + forwardRunLength] == 'F') {
-            	forwardRunLength++;
-        	}
+            float totalDist = forwardRunLength * CELL_DISTANCE;
+            float rotations = totalDist / (2.0f * PI * RADIUS);
+            forwardTargetTicks = round(rotations * TICKS_PER_REV);
 
-        const float totalDist = forwardRunLength * CELL_DISTANCE;
-        const float rotations = totalDist / (2.0f * PI * RADIUS);
-        forwardTargetTicks = lround(rotations * TICKS_PER_REV);
-
-        moveInProgress = true;
-        moveStartTime = millis();
-        imu->update();
-        headingTarget = imu->yaw();
-        headingPID->reset();
-        encoder->reset();
+            moveInProgress = true;
+            moveStartTime = millis();
+            imu->update();
+            headingTarget = imu->yaw();
+            headingPID->reset();
+            encoder->reset();
         }
         else if (cmd == 'R' || cmd == 'L') {
             startTurn(cmd, imu, turnPID);
@@ -188,7 +186,8 @@ void MotorController::resetInternalState() {
     for (int i = 0; i < 5; ++i) wallDistanceBuffer[i] = 100.0f;
 }
 
-void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM) {
+void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu,
+                                              PIDController* headingPID, float dt, float basePWM) {
 
     bool movingForward = basePWM >= 0;
     int absPWM = abs(basePWM);
@@ -196,86 +195,33 @@ void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, P
 	long leftTicks = encoder->getLeftTicks();
     long rightTicks = encoder->getRightTicks();
     long tickDiff = leftTicks - rightTicks;
-    
+
     imu->update();
     float headingError = wrap180(headingTarget - imu->yaw());
-    
-    float encoderCorrection = tickDiff * 0.5;  
+
+    float encoderCorrection = tickDiff * 0.5;
     float imuCorrection = headingPID->compute(0.0, -headingError, dt);
 
     float totalCorrection = (encoderCorrection * 0.7) + (imuCorrection * 0.3);
     totalCorrection = constrain(totalCorrection, -50, 50);
-    
+
     int leftPWM = basePWM - totalCorrection;
     int rightPWM = basePWM + totalCorrection;
-    
+
     if (leftPWM > 0 && leftPWM < 60) leftPWM = 60;
     if (rightPWM > 0 && rightPWM < 60) rightPWM = 60;
-    
+
     leftPWM = constrain(leftPWM, 0, 255);
     rightPWM = constrain(rightPWM, 0, 255);
-    
-    digitalWrite(mot1_dir, HIGH);  
-    digitalWrite(mot2_dir, LOW);   
+
+    digitalWrite(mot1_dir, HIGH);
+    digitalWrite(mot2_dir, LOW);
     analogWrite(mot1_pwm, leftPWM);
     analogWrite(mot2_pwm, rightPWM);
 }
 
 char MotorController::getCurrentCommand() {
     return commandBuffer[commandIndex];
-}
-
-void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu) {
-	if (!wallApproachActive) {
-		wallApproachActive = true;
-		wallApproachStart = millis();
-
-		imu->update();
-		float headinTarget = 0.0;
-
-		float initialDist = lidar->getFrontDistance();
-		for (int i = 0; i < 5; i++) {
-			wallDistanceBuffer[i] = lidar->getFrontDistance();
-		}
-		wallBufferIndex = 0;
-
-        DistancePID->reset();
-	}
-
-    if (millis() - wallApproachStart >= WALL_APPROACH_MS) {
-        stop();
-        wallApproachActive = false;
-        *currentState = COMMAND_CHAIN;
-        return;
-    }
-
-    float rawDist = lidar->getFrontDistance();
-    wallDistanceBuffer[wallBufferIndex] = rawDist;
-    wallBufferIndex = (wallBufferIndex + 1) % 5;
-
-	float sum = 0.0f;
-	for (int i = 0; i < 5; i++) {
-       	sum += wallDistanceBuffer[i];
-   	}
-   	float avgDistance = sum / 5.0;
-
-    float distanceError = avgDistance - 100.0;
-
-    if (abs(distanceError) < 3.0) {
-        stop();
-        return;
-    }
-
-    float distancePIDOutput = DistancePID->compute(0.0f, distanceError, dt);
-    distancePIDOutput = constrain(distancePIDOutput, -150, 150);
-    int basePWM = abs((int)distancePIDOutput);
-
-        if (distanceError > 0) {
-        driveForwards(basePWM);
-    } else {
-        driveBackwards(basePWM);
-    }
-    
 }
 
 // void MotorController::startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState) {
@@ -303,19 +249,19 @@ void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* Dist
 
 // void MotorController::returnToHeading(IMU* imu, PIDController* turnPID, float dt, states& currentState) {
 //     static bool returnStarted = false;
-    
+
 //     if (!returnStarted) {
 //         // First time in this state - calculate how to get back
 //         imu->update();
 //         float currentYaw = imu->yaw();
 //         float angleDifference = wrap180(startupYaw - currentYaw);
-        
+
 //         // Set up turn to return to original heading
 //         turnTargetYaw = startupYaw;
 //         turnInProgress = true;
 //         turnStartTime = millis();
 //         turnPID->reset();
-        
+
 //         returnStarted = true;
 //         return;
 //     }
@@ -323,7 +269,7 @@ void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* Dist
 //     if (updateTurn(imu, turnPID, dt)) {
 //         // Turn complete
 //         returnStarted = false;
-        
+
 //         if (rotationRound < 1) {
 //             rotationRound++;
 //             waitStart = millis();
@@ -334,3 +280,64 @@ void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* Dist
 //     }
 // }
 
+// void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID,
+//                                         float dt, states* currentState, IMU* imu,
+//                                         PIDController* headingPID, DualEncoder* encoder) {
+
+// 	if (!wallApproachActive) {
+// 		wallApproachActive = true;
+// 		wallApproachStart = millis();
+
+// 		imu->update();
+// 		float headinTarget = 0.0;
+// 		encoder->reset();
+
+// 		float initialDist = lidar->getFrontDistance();
+// 		for (int i = 0; i < 5; i++) {
+// 			wallDistanceBuffer[i] = lidar->getFrontDistance();
+// 		}
+// 		wallBufferIndex = 0;
+
+//         DistancePID->reset();
+//         headingPID->reset();
+// 	}
+
+//     if (millis() - wallApproachStart >= WALL_APPROACH_MS) {
+//         stop();
+//         wallApproachActive = false;
+//         *currentState = COMMAND_CHAIN;
+//         return;
+//     }
+
+//     float rawDist = lidar->getFrontDistance();
+//     wallDistanceBuffer[wallBufferIndex] = rawDist;
+//     wallBufferIndex = (wallBufferIndex + 1) % 5;
+
+// 	float sum = 0.0f;
+// 	for (int i = 0; i < 5; i++) {
+//        	sum += wallDistanceBuffer[i];
+//    	}
+//    	float avgDistance = sum / 5.0f;
+
+//     float distanceError = avgDistance - 100.0f;
+
+//     if (fabs(distanceError) < 5.0f) {
+//         stop();
+//         return;
+//     }
+
+//     float distancePIDOutput = DistancePID->compute(0.0f, distanceError, dt);
+//     distancePIDOutput = constrain(distancePIDOutput, -150, 150);
+//     int basePWM = -(int)distancePIDOutput;
+//  	imu->update();
+//     float currentHeading = imu->yaw();
+//     float headingError = wrap180(headingTarget - currentHeading);
+
+//     if (fabs(headingError) > 10.0f) {
+//         Serial.print("Large heading error detected: ");
+//         Serial.println(headingError);
+//     }
+
+//     driveStraightDualEncoder(encoder, imu, headingPID, dt, basePWM);
+
+// }
