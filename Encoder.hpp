@@ -3,20 +3,35 @@
 
 #include <Arduino.h>
 
-class Encoder {
+class DualEncoder {
 private:
-    int encA, encB;
-    volatile long ticks;
-
-    static Encoder* instance;
-    static void isr();
+    int encA_L, encB_L, encA_R, encB_R;
+    volatile long ticksLeft, ticksRight;
+    
+    static DualEncoder* instance;
+    static void isrLeft();
+    static void isrRight();
 
 public:
-    Encoder(int a = 2, int b = 7);
-
+    DualEncoder(int aL = 2, int bL = 7, int aR = 3, int bR = 8);
     void begin();
-    long getTicks();
+    
+    // Basic tick access
+    long getLeftTicks() const;
+    long getRightTicks() const;
+    
+    // Useful calculations
+    long getAverageTicks() const;
+    long getDifferentialTicks() const;  // For rotation
+    float getHeadingChange() const;     // In degrees
+    
+    // Reset functions
     void reset();
+    void resetLeft();
+    void resetRight();
+    
+    // Drift detection
+    float getDriftRatio() const;  // Returns left/right ratio
 };
 
 #endif

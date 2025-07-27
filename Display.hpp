@@ -16,6 +16,8 @@ public:
     void showLidarDistance(int LeftDistance, int FrontDistance, int RightDistance);
     void showIMUReading(int angle);
     void showState(const char* stateName);
+    void showCommandStatus(const char* stateName, char currentCmd, float heading);
+
 
 };
 
