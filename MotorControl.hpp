@@ -46,14 +46,15 @@ public:
 
     char getCurrentCommand();
 
+    void driveForwards(int pwmVal);
+    void driveBackwards(int pwmVal);
+
 
 	// void startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState);
     // void waitForRotation(IMU* imu, PIDController* turnPID, states& currentState);
     // void returnToHeading(IMU* imu, PIDController* turnPID, float dt, states& currentState);
 
-    // void wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID,
-    //                        float dt, states* currentState, IMU* imu,
-    //                        PIDController* headingPID, DualEncoder* encoder);
+void wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu);
 
 private:
     int mot1_pwm, mot1_dir, mot2_pwm, mot2_dir;
