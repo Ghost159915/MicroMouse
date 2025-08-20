@@ -15,6 +15,7 @@ Display display(RADIUS, TICKS_PER_REV);
 PIDController DistancePID(0.9, 0.0, 0.3, 0.8);
 PIDController TurningPID(1.92, 0.32, 0.0, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
+PIDController WallPID(0.5, 0.0, 0.3);
 
 LidarSensor lidar;
 IMU imu;
@@ -108,6 +109,23 @@ void loop() {
             motors.stop();
             display.showCommandStatus("COMPLETE", activeCmd, heading);
             break;
+        }
+
+        case FORWARD: {
+           static bool init = false;
+            if (!init) {
+                imu.zeroYaw();         // lock heading for this segment
+                HeadingPID.reset();
+                WallPID.reset();
+                init = true;
+            }
+
+            const int basePWM = 120;   // or your DEFAULT_FORWARD_PWM
+            motors.forwardPWMsWithWalls(&encoder, &imu, &HeadingPID, &WallPID, &lidar,
+                basePWM, dt);
+            delay(5000);
+            break;
+
         }
 
         default: {

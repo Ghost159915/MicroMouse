@@ -298,11 +298,11 @@ void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* Dist
 }
 
 void MotorController::forwardPWMsWithWalls(
-    DualEncoder& enc,
-    IMU&         imu,            // imu.yawRel() ~ 0 when straight
-    PIDController& headingPID,   // holds yawRel @ 0 deg
-    PIDController& wallPID,      // centers (L-R) @ 0
-    LidarSensor&  lidar,
+    DualEncoder* enc,
+    IMU*         imu,            // imu.yawRel() ~ 0 when straight
+    PIDController* headingPID,   // holds yawRel @ 0 deg
+    PIDController* wallPID,      // centers (L-R) @ 0
+    LidarSensor*  lidar,
     int           basePWM,
     float         dt
 ){
@@ -314,26 +314,26 @@ void MotorController::forwardPWMsWithWalls(
     }
 
     // --- 1) Encoder steering term: keep wheel ticks matched ---
-    long lt = enc.getLeftTicks();
-    long rt = enc.getRightTicks();
+    long lt = enc->getLeftTicks();
+    long rt = enc->getRightTicks();
     float encDelta = static_cast<float>(lt - rt);     // >0: left advanced more
     float encCorr  = kEncGain * encDelta;
 
     // --- 2) IMU heading term: keep yawRel @ 0 deg ---
     imu.update();
-    float yawRelDeg = imu.yawRel();                   // measurement
+    float yawRelDeg = imu->yawRel();                   // measurement
     float imuMeas   = clampf(yawRelDeg, -kIMUClamp, kIMUClamp);
-    float imuCorr   = headingPID.compute(0.0f, imuMeas, dt);
+    float imuCorr   = headingPID->compute(0.0f, imuMeas, dt);
     // If your PID expects "error" instead of "measurement":
     // float imuCorr = headingPID.compute(0.0f, -imuMeas, dt);
 
     // --- 3) Wall centering term: (left - right) -> 0 ---
-    float lmm = lidar.getLeftDistance();
-    float rmm = lidar.getRightDistance();
+    float lmm = lidar->getLeftDistance();
+    float rmm = lidar->getRightDistance();
     float wallCorr = 0.0f;
     if (validSideMM(lmm) && validSideMM(rmm)) {
         float wallErr = lmm - rmm;                    // centered → 0
-        wallCorr = wallPID.compute(0.0f, wallErr, dt);
+        wallCorr = wallPID->compute(0.0f, wallErr, dt);
         wallCorr = clampf(wallCorr, -kWallClamp, kWallClamp);
     }
 
