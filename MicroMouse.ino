@@ -39,7 +39,7 @@ void setup() {
     encoder.reset();
     lastTime = millis();
     currentState = COMMAND_CHAIN;
-    motors.startCommandChain("FRL");
+    motors.startCommandChain("R");
     imu.calibrate();
     delay(3000);
 }

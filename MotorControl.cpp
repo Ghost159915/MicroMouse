@@ -116,6 +116,7 @@ bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
     if (abs(err) < 2) {
         stop();
         turnInProgress = false;
+        imu->zeroYaw();
         return true;
     }
     return false;
@@ -309,7 +310,7 @@ void MotorController::forwardPWMsWithWalls(
     if (basePWM <= 0) {
         int p = clampf(basePWM, 0, kMaxPWM);
         if (p > 0 && p < kMinPWM) p = kMinPWM;
-        return {p, p};
+        return;
     }
 
     // --- 1) Encoder steering term: keep wheel ticks matched ---

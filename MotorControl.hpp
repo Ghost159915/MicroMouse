@@ -6,6 +6,7 @@
 #include "Encoder.hpp"
 #include "PIDController.hpp"
 #include "LidarSensor.hpp"
+#include <math.h>
 
 static constexpr float CELL_DISTANCE   = 180.0f;
 static constexpr int   TICKS_PER_REV   = 700;
