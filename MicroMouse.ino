@@ -39,8 +39,8 @@ void setup() {
     lidar.begin();
     encoder.reset();
     lastTime = millis();
-    currentState = COMMAND_CHAIN;
-    motors.startCommandChain("R");
+    currentState = FORWARD;
+    motors.startCommandChain("FFLFRFF");
     imu.calibrate();
     delay(3000);
 }
