@@ -104,8 +104,8 @@ bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
 }
 
 void MotorController::startCommandChain(const char* cmd) {
-    strncpy(commandBuffer, cmd, sizeof(commandBuffer) - 1);
-    commandBuffer[sizeof(commandBuffer) - 1] = '\0';
+    strncpy(commandBuffer, cmd, COMMAND_BUFFER_SIZE - 1);
+    commandBuffer[COMMAND_BUFFER_SIZE - 1] = '\0';
     commandIndex = 0;
     commandActive = true;
     moveInProgress = false;
@@ -114,7 +114,8 @@ void MotorController::startCommandChain(const char* cmd) {
 
 void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, 
                                          DualEncoder* encoder, IMU* imu, states* currentState, float dt) {
-    if (!commandActive || commandBuffer[commandIndex] == '\0') {
+
+    if (!commandActive || commandIndex >= COMMAND_BUFFER_SIZE || commandBuffer[commandIndex] == '\0') {
         stop();
         *currentState = COMPLETE;
         return;
@@ -125,22 +126,23 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
     if (!moveInProgress) {
         if (cmd == 'F') {
             forwardRunLength = 1;
-            while (commandBuffer[commandIndex + forwardRunLength] == 'F' &&
-                   commandIndex + forwardRunLength < sizeof(commandBuffer) - 1 &&
-                   forwardRunLength < 10) {
-                forwardRunLength++;
-            }
 
-            float totalDist = forwardRunLength * CELL_DISTANCE;
-            float rotations = totalDist / (2.0f * PI * RADIUS);
-            forwardTargetTicks = round(rotations * TICKS_PER_REV);
+        	while ((commandIndex + forwardRunLength) < (COMMAND_BUFFER_SIZE - 1) &&
+                	forwardRunLength < 10 &&
+                	commandBuffer[commandIndex + forwardRunLength] == 'F') {
+            	forwardRunLength++;
+        	}
 
-            moveInProgress = true;
-            moveStartTime = millis();
-            imu->update();
-            headingTarget = imu->yaw();
-            headingPID->reset();
-            encoder->reset();
+        const float totalDist = forwardRunLength * CELL_DISTANCE;
+        const float rotations = totalDist / (2.0f * PI * RADIUS);
+        forwardTargetTicks = lround(rotations * TICKS_PER_REV);
+
+        moveInProgress = true;
+        moveStartTime = millis();
+        imu->update();
+        headingTarget = imu->yaw();
+        headingPID->reset();
+        encoder->reset();
         }
         else if (cmd == 'R' || cmd == 'L') {
             startTurn(cmd, imu, turnPID);

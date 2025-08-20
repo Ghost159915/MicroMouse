@@ -21,7 +21,7 @@ IMU imu;
 states currentState;
 
 Maze maze(4, 4);   // goal in center cell (row 4, col 4)
-int currentRow = 8; // Start at bottom-left in maze grid
+int currentRow = 0; // Start at bottom-left in maze grid
 int currentCol = 0;
 char heading = 'N'; // Starting facing north
 
