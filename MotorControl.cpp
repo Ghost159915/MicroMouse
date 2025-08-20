@@ -1,4 +1,5 @@
 #include "MotorControl.hpp"
+#include "KalmanFilter.hpp"
 
 static constexpr float wEnc       = 0.2f;   // blend weights: encoders > IMU > walls
 static constexpr float wIMU       = 0.2f;
@@ -25,6 +26,18 @@ MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
 {
     for (int i = 0; i < 5; ++i) wallDistanceBuffer[i] = 100.0f;
 }
+
+static inline float wrap180(float a){
+    while (a > 180.f) a -= 360.f;
+    while (a < -180.f) a += 360.f;
+    return a;
+}
+
+// signed shortest-angle difference b - a (deg) in [-180, 180]
+static inline float angDiff(float a, float b){
+    return wrap180(b - a);
+}
+
 
 void MotorController::begin() {
     pinMode(mot1_pwm, OUTPUT);
