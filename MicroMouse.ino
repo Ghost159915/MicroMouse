@@ -34,7 +34,7 @@ void setup() {
     encoder.reset();
     lastTime = millis();
 
-    currentState = FORWARD;
+    currentState = FORWARD;            // start in forward test mode
     motors.startCommandChain("RR");
 
     imu.calibrate();
@@ -49,28 +49,24 @@ void loop() {
     imu.update();
 
     switch (currentState) {
-        case COMMAND_CHAIN:
+        case COMMAND_CHAIN: {
             char activeCmd = motors.getCurrentCommand();
             float heading = imu.yaw();
             motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
             display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
             break;
+        }
 
-<<<<<<< HEAD
         case COMPLETE: {
             char activeCmd = motors.getCurrentCommand();
             float heading = imu.yaw();
-=======
-        case COMPLETE:
-            // display.showState("COMPLETE");
->>>>>>> main
             motors.stop();
             display.showCommandStatus("COMPLETE", activeCmd, heading);
             break;
+        }
 
-<<<<<<< HEAD
         case FORWARD: {
-           static bool init = false;
+            static bool init = false;
             if (!init) {
                 imu.zeroYaw();         // lock heading for this segment
                 HeadingPID.reset();
@@ -80,14 +76,11 @@ void loop() {
 
             const int basePWM = 120;   // or your DEFAULT_FORWARD_PWM
             motors.forwardPWMsWithWalls(&encoder, &imu, &HeadingPID, &WallPID, &lidar,
-                basePWM, dt);
-            delay(5000);
+                                        basePWM, dt);
+            delay(5000);               // test pause; remove for continuous control
             break;
-
         }
 
-        default: {
-=======
         case STARTUP_TURN:
             // motors.startupTurn(&imu, &TurningPID, dt, currentState);
             // display.showIMUReading(imu.yaw());
@@ -115,7 +108,6 @@ void loop() {
             break;
 
         default:
->>>>>>> main
             motors.stop();
             break;
     }
