@@ -39,7 +39,7 @@ void setup() {
     encoder.reset();
     lastTime = millis();
     currentState = COMMAND_CHAIN;
-    motors.startCommandChain("FFLFRFF");
+    motors.startCommandChain("FRL");
     imu.calibrate();
     delay(3000);
 }
@@ -103,7 +103,10 @@ void loop() {
         }
 
         case COMPLETE: {
+            char activeCmd = motors.getCurrentCommand();
+            float heading = imu.yaw();
             motors.stop();
+            display.showCommandStatus("COMPLETE", activeCmd, heading);
             break;
         }
 
