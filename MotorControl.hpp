@@ -16,13 +16,10 @@ static constexpr unsigned long WALL_APPROACH_MS = 20000;
 static constexpr unsigned long DEFAULT_FORWARD_PWM = 100;
 
 enum states {
-    STARTUP_TURN,
-    WAIT_FOR_ROTATION,
-    RETURN_TO_HEADING,
-    WALL_APPROACH,
     COMMAND_CHAIN,
     COMPLETE,
-    TEST
+	PLANNING,
+	EXECUTING
 };
 
 class MotorController {
