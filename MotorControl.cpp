@@ -21,7 +21,7 @@ MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
       moveInProgress(false), moveStartTime(0), turnInProgress(false), turnTargetYaw(0.0f),
       turnStartTime(0), startupInitiated(false), startupYaw(0.0f),
       waitStart(0), rotationOffset(0.0f), wallApproachActive(false), wallApproachStart(0),
-      wallBufferIndex(0)
+      wallBufferIndex(0), yawFilter(0.5f, 4.0f)
 {
     for (int i = 0; i < 5; ++i) wallDistanceBuffer[i] = 100.0f;
 }
@@ -72,7 +72,6 @@ void MotorController::driveForwards(int pwmVal) {
     analogWrite(mot2_pwm, pwmVal);
 }
 
-
 void MotorController::stop() {
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);
@@ -88,13 +87,36 @@ void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID
     turnPID->reset();
 }
 
-bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
+bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder) {
     if (!turnInProgress) return true;
 
-    imu->update();
-    float currentYaw = imu->yaw();
-    float err = wrap180(currentYaw - turnTargetYaw);
+    // --- 1. Get encoder delta yaw ---
+    long leftTicks = encoder->getLeftTicks();
+    long rightTicks = encoder->getRightTicks();
 
+    float leftDist  = (2.0f * PI * RADIUS) * (leftTicks / (float)TICKS_PER_REV);
+    float rightDist = (2.0f * PI * RADIUS) * (rightTicks / (float)TICKS_PER_REV);
+
+    // Differential drive rotation in radians
+    float deltaYawRad = (leftDist - rightDist) / WHEEL_BASE;
+    float deltaYawDeg = deltaYawRad * (180.0f / PI);
+
+    // Reset encoder so delta is per-cycle
+    encoder->reset();
+
+    // --- 2. Kalman predict + update ---
+    yawFilter.predict(deltaYawDeg);
+
+    imu->update();
+    float imuYaw = imu->yaw();
+    yawFilter.update(imuYaw);
+
+    float fusedYaw = wrap180(yawFilter.getState());
+
+    // --- 3. Compute error against target yaw ---
+    float err = wrap180(fusedYaw - turnTargetYaw);
+
+    // --- 4. PID correction ---
     float corr = turnPID->compute(0.0, err, dt);
     int pwm = constrain(abs(corr), 0, 255);
 
@@ -103,11 +125,8 @@ bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt) {
     } else {
         spinCW(pwm);
     }
-
-    //|| millis() - turnStartTime >= TURN_DURATION_MS
-    Serial.println(err);
-
-    if (abs(err) < 2) {
+    // --- 5. Stop condition ---
+    if (abs(err) < 2.0f) {  // within 2 degrees
         stop();
         turnInProgress = false;
         imu->zeroYaw();
@@ -176,7 +195,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
             }
         }
         else if (cmd == 'R' || cmd == 'L') {
-            if (updateTurn(imu, turnPID, dt)) {
+            if (updateTurn(imu, turnPID, dt, encoder)) {
                 stop();
                 commandIndex++;
                 moveInProgress = false;
