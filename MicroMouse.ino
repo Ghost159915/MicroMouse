@@ -34,11 +34,11 @@ void setup() {
     encoder.reset();
     lastTime = millis();
 
-    currentState = FORWARD;            // start in forward test mode
-    //motors.startCommandChain("RR");
+    currentState = COMMAND_CHAIN;            // start in forward test mode
+    motors.startCommandChain("R");
 
     imu.calibrate();
-    delay(3000);
+    delay(1500);
 }
 
 void loop() {
@@ -52,6 +52,9 @@ void loop() {
         case COMMAND_CHAIN: {
             char activeCmd = motors.getCurrentCommand();
             float heading = imu.yaw();
+            Serial.print("Heading: ");
+            Serial.println(heading);
+
             motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
             display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
             break;
@@ -59,7 +62,7 @@ void loop() {
 
         case COMPLETE: {
             char activeCmd = motors.getCurrentCommand();
-            float heading = imu.yaw();
+            float heading = motors.getFusedYaw();
             motors.stop();
             display.showCommandStatus("COMPLETE", activeCmd, heading);
             break;

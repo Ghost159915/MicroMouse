@@ -76,64 +76,81 @@ void MotorController::stop() {
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);
 }
-
 void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID) {
-
+    // Fresh heading before computing target
+    imu->update();
     float startYaw = imu->yaw();
-    float delta = (direction == 'R') ? -90.0f : +90.0f;
-    turnTargetYaw = wrap180(startYaw + delta);
-    turnInProgress = true;
-    turnStartTime = millis();
+
+    // 90° right is negative (CW), left is positive (CCW) in our convention
+    float delta = (direction == 'R' || direction == 'r') ? -90.0f : +90.0f;
+
+    turnTargetYaw   = wrap180(startYaw + delta);
+    turnInProgress  = true;
+    turnStartTime   = millis();
+
+    // Run turn PID as PD (Ki=0) — ensure tunings were set elsewhere; just reset here.
     turnPID->reset();
+
+    // IMPORTANT: do NOT zeroYaw() here — only after the turn completes.
 }
+
+
 
 bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder) {
     if (!turnInProgress) return true;
+    (void)encoder; // unused (no Kalman/encoders in this version)
 
-    // --- 1. Get encoder delta yaw ---
-    long leftTicks = encoder->getLeftTicks();
-    long rightTicks = encoder->getRightTicks();
-
-    float leftDist  = (2.0f * PI * RADIUS) * (leftTicks / (float)TICKS_PER_REV);
-    float rightDist = (2.0f * PI * RADIUS) * (rightTicks / (float)TICKS_PER_REV);
-
-    // Differential drive rotation in radians
-    float deltaYawRad = (leftDist - rightDist) / WHEEL_BASE;
-    float deltaYawDeg = deltaYawRad * (180.0f / PI);
-
-    // Reset encoder so delta is per-cycle
-    encoder->reset();
-
-    // --- 2. Kalman predict + update ---
-    yawFilter.predict(deltaYawDeg);
-
+    // --- read IMU yaw (degrees) ---
     imu->update();
-    float imuYaw = imu->yaw();
-    yawFilter.update(imuYaw);
+    float currentYaw = imu->yaw();                       // absolute heading in deg
+    Serial.print("current yaw:");
+    Serial.println(currentYaw);
 
-    float fusedYaw = wrap180(yawFilter.getState());
+    // --- control error (desired - actual), wrapped to [-180, 180] ---
+    float err = wrap180(turnTargetYaw - currentYaw);
 
-    // --- 3. Compute error against target yaw ---
-    float err = wrap180(fusedYaw - turnTargetYaw);
+    // --- use your Turning PID as PD (ensure Ki=0; reset done in startTurn) ---
+    // If PID::compute(setpoint, measurement) = setpoint - measurement:
+    float u = turnPID->compute(0.0f, -err, dt);          // ≈ Kp*err + Kd*d(err)/dt
 
-    // --- 4. PID correction ---
-    float corr = turnPID->compute(0.0, err, dt);
-    int pwm = constrain(abs(corr), 0, 255);
+    // --- adaptive PWM cap based on ANGLE error (not controller output) ---
+    auto pwmCapFromErr = [](float eAbs)->int {
+        if (eAbs >= 60.f) return 150;    // far → faster
+        if (eAbs >= 30.f) return 120;
+        if (eAbs >= 15.f) return 95;
+        if (eAbs >=  6.f) return 80;
+        return 65;                       // very close → crawl
+    };
+    int pwmCap = pwmCapFromErr(fabs(err));
 
-    if (corr > 0) {
+    const int kMinTurnPWM = 60;                           // tweak if stalling
+    int pwm = constrain((int)fabs(u), kMinTurnPWM, min(pwmCap, kMaxPWM));
+
+    // --- drive motors (flip CW/CCW here if your wiring is opposite) ---
+    if (u > 0) {
         spinCCW(pwm);
     } else {
         spinCW(pwm);
     }
-    // --- 5. Stop condition ---
-    if (abs(err) < 2.0f) {  // within 2 degrees
+
+    // --- stop when angle AND spin-rate are small ---
+    static float prevErr = 0.0f;
+    float errDot = (dt > 1e-4f) ? (err - prevErr) / dt : 0.0f;  // ~deg/s
+    prevErr = err;
+
+    const float ANG_EPS  = 2.0f;    // degrees
+    const float RATE_EPS = 18.0f;   // deg/s (from errDot)
+    if (fabs(err) < ANG_EPS && fabs(errDot) < RATE_EPS) {
         stop();
         turnInProgress = false;
-        imu->zeroYaw();
+        imu->zeroYaw();             // make current heading = 0 for next straight
+        prevErr = 0.0f;             // re-arm for next turn
         return true;
     }
     return false;
 }
+
+
 
 void MotorController::startCommandChain(const char* cmd) {
     strncpy(commandBuffer, cmd, sizeof(commandBuffer) - 1);
@@ -254,6 +271,10 @@ void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu,
 
 char MotorController::getCurrentCommand() {
     return commandBuffer[commandIndex];
+}
+
+float MotorController::getFusedYaw() const {
+    return wrap180(yawFilter.getState());
 }
 
 // void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu) {

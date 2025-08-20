@@ -1,107 +1,80 @@
 #include "IMU.hpp"
-#include <Wire.h>
+
+// MPU-6050 default gyro full-scale ±250 dps -> 131 LSB/(deg/s)
+static inline float lsbToDps(int16_t raw) { return raw / 131.0f; }
 
 IMU::IMU()
-: _addr(0x68),
-  _rawGyroZ(0.0f),
-  _gyroBiasZ(0.0f),
-  _yaw(0.0f),
-  _yawZeroDeg(0.0f),
-  _prevMicros(0),
-  _hasPrevTime(false)
+: addr(0x68),
+  yawDeg(0.0f),
+  yawZeroDeg(0.0f),
+  lastMillis(0),
+  hasLast(false)
 {}
 
 void IMU::begin() {
-    Wire.beginTransmission(_addr);
-    Wire.write(0x6B);      // PWR_MGMT_1
-    Wire.write(0);         // wake up device
+    // Wake device (PWR_MGMT_1 = 0)
+    Wire.beginTransmission(addr);
+    Wire.write(0x6B);
+    Wire.write(0);
     Wire.endTransmission();
 }
 
-void IMU::calibrate(uint16_t samples) {
-    // Average raw gyro Z to estimate bias; keep robot still
-    float sumZ = 0.0f;
-    for (uint16_t i = 0; i < samples; ++i) {
-        _readRaw();
-        sumZ += _rawGyroZ;
-        delay(1); // small spacing helps stability
-    }
-    _gyroBiasZ = sumZ / (float)samples;
+float IMU::readGzDps() {
+    // Read 6 bytes starting at GYRO_XOUT_H (0x43), discard X/Y, keep Z
+    Wire.beginTransmission(addr);
+    Wire.write(0x43);
+    Wire.endTransmission(false);
+    Wire.requestFrom(addr, (uint8_t)6, (uint8_t)true);
+
+    // X
+    (void)Wire.read(); (void)Wire.read();
+    // Y
+    (void)Wire.read(); (void)Wire.read();
+    // Z
+    int16_t gzRaw = (Wire.read() << 8) | Wire.read();
+    return lsbToDps(gzRaw); // deg/s
 }
 
 void IMU::update() {
-    _readRaw();
+    float gz = readGzDps();                 // deg/s about Z
 
-    unsigned long now = micros();
-    if (!_hasPrevTime) {
-        _prevMicros = now;
-        _hasPrevTime = true;
-        return; // no integration on first call
+    unsigned long now = millis();
+    if (!hasLast) {
+        lastMillis = now;
+        hasLast = true;
+        return;                              // no integration on first call
     }
+    float dt = (now - lastMillis) / 1000.0f; // seconds
+    lastMillis = now;
 
-    float dt = (now - _prevMicros) * 1e-6f; // seconds
-    _prevMicros = now;
-
-    // Guard against huge or negative dt (USB pauses etc.)
-    if (dt <= 0.0f || dt > 0.05f) { // >50ms? skip to avoid big jumps
-        return;
-    }
-
-    // Integrate gyro (deg/s * s = deg)
-    const float gz = (_rawGyroZ - _gyroBiasZ);
-    _yaw += gz * dt;
+    // Integrate yaw (no bias removal; will drift over time)
+    yawDeg += gz * dt;
 
     // Wrap to [-180, 180]
-    if (_yaw > 180.0f)  _yaw -= 360.0f;
-    if (_yaw < -180.0f) _yaw += 360.0f;
+    yawDeg = wrap180(yawDeg);
 }
 
 float IMU::yaw() const {
-    return _yaw;
+    return yawDeg;
 }
 
 float IMU::yawRel() const {
-    // Relative to the last zeroYaw()
-    float rel = _yaw - _yawZeroDeg;
-    // Wrap to [-180, 180]
-    while (rel > 180.f) rel -= 360.f;
-    while (rel < -180.f) rel += 360.f;
-    return rel;
+    return wrap180(yawDeg - yawZeroDeg);
 }
 
 void IMU::zeroYaw() {
-    // Soft-zero: make current absolute yaw become 0 in yawRel()
-    _yawZeroDeg = _yaw;
+    yawZeroDeg = yawDeg;
 }
 
 void IMU::setYaw(float deg) {
-    // Force absolute yaw (mainly for testing)
-    // Also keeps yawRel continuous by shifting zero with it.
-    float oldYaw = _yaw;
-    _yaw = deg;
-    // keep relative zeroed direction the same
-    _yawZeroDeg += (_yaw - oldYaw);
-    // Wrap both
-    if (_yaw > 180.0f)  _yaw -= 360.0f;
-    if (_yaw < -180.0f) _yaw += 360.0f;
-    if (_yawZeroDeg > 180.0f)  _yawZeroDeg -= 360.0f;
-    if (_yawZeroDeg < -180.0f) _yawZeroDeg += 360.0f;
+    // set absolute yaw; keep relative zero continuous
+    float old = yawDeg;
+    yawDeg = wrap180(deg);
+    yawZeroDeg = wrap180(yawZeroDeg + (yawDeg - old));
 }
 
-void IMU::_readRaw() {
-    // Read GYRO_X/Y/Z starting at 0x43 (MPU-6050)
-    Wire.beginTransmission(_addr);
-    Wire.write(0x43);
-    Wire.endTransmission(false);
-    Wire.requestFrom(_addr, static_cast<uint8_t>(6), static_cast<uint8_t>(true));
-
-    // Skip X, Y
-    (void)Wire.read(); (void)Wire.read();
-    (void)Wire.read(); (void)Wire.read();
-
-    // Read Z high/low
-    int16_t gzRaw = (Wire.read() << 8) | Wire.read();
-
-    // Sensitivity 131 LSB/(deg/s) at ±250 dps
-    _rawGyroZ = gzRaw / 131.0f; // deg/s
+float IMU::wrap180(float a) {
+    while (a > 180.f) a -= 360.f;
+    while (a < -180.f) a += 360.f;
+    return a;
 }

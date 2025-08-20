@@ -17,7 +17,7 @@ static constexpr unsigned long MOVE_TIMEOUT = 3000;  // ms
 static constexpr unsigned long TURN_DURATION_MS = 1300; // ms
 static constexpr unsigned long WALL_APPROACH_MS = 20000;
 static constexpr unsigned long DEFAULT_FORWARD_PWM = 100;
-static constexpr float WHEEL_BASE = 900;
+static constexpr float WHEEL_BASE = 90;
 
 enum states {
     STARTUP_TURN,
@@ -48,6 +48,9 @@ public:
     void resetInternalState();
     void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
     char getCurrentCommand();
+
+    float getFusedYaw() const;
+    
 
 	// void startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState);
     // void waitForRotation(IMU* imu, PIDController* turnPID, states& currentState);

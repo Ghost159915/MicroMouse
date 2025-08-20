@@ -1,39 +1,29 @@
 #pragma once
 #include <Arduino.h>
+#include <Wire.h>
 
 class IMU {
 public:
     IMU();
 
-    void begin();
-    void calibrate(uint16_t samples = 1000);
-    void update();
+    void begin();                    // wake MPU-6050
+    void calibrate(uint16_t = 0) {}  // no-op (kept for API compatibility)
+    void update();                   // integrate Z gyro -> yaw (deg)
 
-    // Absolute fused gyro yaw in degrees [-180, 180]
-    float yaw() const;
-
-    // Relative yaw w.r.t. last zeroYaw() call: wrap180(yaw() - yawZeroDeg)
-    float yawRel() const;
-
-    // Set current yaw() as new zero for yawRel()
-    void zeroYaw();
-
-    // Optional: force absolute yaw (e.g., for tests)
-    void setYaw(float deg);
+    float yaw() const;               // absolute heading in degrees [-180, 180]
+    float yawRel() const;            // relative to last zeroYaw()
+    void  zeroYaw();                 // set current heading as 0 for yawRel()
+    void  setYaw(float deg);         // force absolute yaw (deg)
 
 private:
-    void _readRaw();
-    static inline float _wrap180(float a) {
-        while (a > 180.f) a -= 360.f;
-        while (a < -180.f) a += 360.f;
-        return a;
-    }
+    uint8_t addr;
+    float   yawDeg;
+    float   yawZeroDeg;
 
-    uint8_t _addr;
-    float   _rawGyroZ;     // deg/s
-    float   _gyroBiasZ;    // deg/s
-    float   _yaw;          // absolute yaw (deg)
-    float   _yawZeroDeg;   // soft zero offset for yawRel()
-    unsigned long _prevMicros;
-    bool    _hasPrevTime;
+    unsigned long lastMillis;
+    bool    hasLast;
+
+    // read MPU-6050 GYRO_Z (deg/s) using raw register access
+    float   readGzDps();
+    static float wrap180(float a);
 };
