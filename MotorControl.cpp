@@ -1,5 +1,23 @@
 #include "MotorControl.hpp"
 
+static constexpr float wEnc       = 0.6f;   // blend weights: encoders > IMU > walls
+static constexpr float wIMU       = 0.3f;
+static constexpr float wWall      = 0.1f;
+
+static constexpr float kEncGain   = 0.50f;  // ticks -> steering scale
+static constexpr float kIMUClamp  = 45.0f;  // deg clamp before PID
+static constexpr float kWallClamp = 40.0f;  // max PWM from wall PID
+static constexpr float kSteerMax  = 60.0f;  // overall steering clamp
+static constexpr float kSpeedMax  = 30.0f;  // (optional) common speed clamp
+static constexpr int   kMinPWM    = 60;     // overcome static friction
+static constexpr int   kMaxPWM    = 255;    // PWM ceiling
+
+static inline bool validSideMM(float d) { return isfinite(d) && d > 40.f && d < 1200.f; }
+static inline float clampf(float x, float lo, float hi){ return x < lo ? lo : (x > hi ? hi : x); }
+
+
+
+
 MotorController::MotorController(int m1_pwm, int m1_dir, int m2_pwm, int m2_dir)
     : mot1_pwm(m1_pwm), mot1_dir(m1_dir),
     mot2_pwm(m2_pwm), mot2_dir(m2_dir), commandIndex(0), commandActive(false),
@@ -278,6 +296,69 @@ void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* Dist
     
 }
 
+void MotorController::forwardPWMsWithWalls(
+    DualEncoder& enc,
+    IMU&         imu,            // imu.yawRel() ~ 0 when straight
+    PIDController& headingPID,   // holds yawRel @ 0 deg
+    PIDController& wallPID,      // centers (L-R) @ 0
+    LidarSensor&  lidar,
+    int           basePWM,
+    float         dt
+){
+    // If not moving forward, just pass through (no wall centering)
+    if (basePWM <= 0) {
+        int p = clampf(basePWM, 0, kMaxPWM);
+        if (p > 0 && p < kMinPWM) p = kMinPWM;
+        return {p, p};
+    }
+
+    // --- 1) Encoder steering term: keep wheel ticks matched ---
+    long lt = enc.getLeftTicks();
+    long rt = enc.getRightTicks();
+    float encDelta = static_cast<float>(lt - rt);     // >0: left advanced more
+    float encCorr  = kEncGain * encDelta;
+
+    // --- 2) IMU heading term: keep yawRel @ 0 deg ---
+    imu.update();
+    float yawRelDeg = imu.yawRel();                   // measurement
+    float imuMeas   = clampf(yawRelDeg, -kIMUClamp, kIMUClamp);
+    float imuCorr   = headingPID.compute(0.0f, imuMeas, dt);
+    // If your PID expects "error" instead of "measurement":
+    // float imuCorr = headingPID.compute(0.0f, -imuMeas, dt);
+
+    // --- 3) Wall centering term: (left - right) -> 0 ---
+    float lmm = lidar.getLeftDistance();
+    float rmm = lidar.getRightDistance();
+    float wallCorr = 0.0f;
+    if (validSideMM(lmm) && validSideMM(rmm)) {
+        float wallErr = lmm - rmm;                    // centered → 0
+        wallCorr = wallPID.compute(0.0f, wallErr, dt);
+        wallCorr = clampf(wallCorr, -kWallClamp, kWallClamp);
+    }
+
+    // --- 4) Single steering correction (anti-symmetric) ---
+    float steerCorr = wEnc*encCorr + wIMU*imuCorr + wWall*wallCorr;
+    steerCorr = clampf(steerCorr, -kSteerMax, kSteerMax);
+
+    // --- 5) Optional symmetric speed correction (keep simple/0 for now) ---
+    float speedCorr = 0.0f; // or your speed PID
+    speedCorr = clampf(speedCorr, -kSpeedMax, kSpeedMax);
+
+    // --- 6) Compose wheel PWMs: common ± differential ---
+    int leftPWM  = static_cast<int>(basePWM + speedCorr - steerCorr);
+    int rightPWM = static_cast<int>(basePWM + speedCorr + steerCorr);
+
+    // Minimums & clamps
+    if (leftPWM  > 0 && leftPWM  < kMinPWM) leftPWM  = kMinPWM;
+    if (rightPWM > 0 && rightPWM < kMinPWM) rightPWM = kMinPWM;
+    leftPWM  = static_cast<int>(clampf(leftPWM,  0, kMaxPWM));
+    rightPWM = static_cast<int>(clampf(rightPWM, 0, kMaxPWM));
+
+    digitalWrite(mot1_dir, HIGH);  
+    digitalWrite(mot2_dir, LOW);   
+    analogWrite(mot1_pwm, leftPWM);
+    analogWrite(mot2_pwm, rightPWM);
+}
 // void MotorController::startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState) {
 //     if (!startupInitiated) {
 //         startupYaw = 0;

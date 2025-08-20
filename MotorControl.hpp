@@ -54,6 +54,16 @@ public:
 
 void wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu);
 
+void forwardPWMsWithWalls(
+    DualEncoder& enc,
+    IMU&         imu,            // imu.yawRel() ~ 0 when straight
+    PIDController& headingPID,   // holds yawRel @ 0 deg
+    PIDController& wallPID,      // centers (L-R) @ 0
+    LidarSensor&  lidar,
+    int           basePWM,
+    float         dt
+);
+
 private:
     int mot1_pwm, mot1_dir, mot2_pwm, mot2_dir;
 
