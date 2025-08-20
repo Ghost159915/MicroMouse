@@ -59,8 +59,3 @@ void Display::showCommandStatus(const char* stateName, char currentCmd, float he
         oled.drawStr(0, 44, buffer3);
     } while (oled.nextPage());
 }
-
-
-
-
-
