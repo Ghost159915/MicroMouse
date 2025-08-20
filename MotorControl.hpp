@@ -37,22 +37,14 @@ public:
     void startTurn(char direction, IMU* imu, PIDController* turnPID);
     bool updateTurn(IMU* imu, PIDController* turnPID, float dt);
 
-
     void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM);
 
     void startCommandChain(const char* cmd);
     void resetInternalState();
     void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
-
     char getCurrentCommand();
-    void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
-
-    char getCurrentCommand();
-
     void driveForwards(int pwmVal);
     void driveBackwards(int pwmVal);
-
-
 
 	// void startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState);
     // void waitForRotation(IMU* imu, PIDController* turnPID, states& currentState);
