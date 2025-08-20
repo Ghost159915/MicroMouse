@@ -43,8 +43,6 @@ public:
     void resetInternalState();
     void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
     char getCurrentCommand();
-    void driveForwards(int pwmVal);
-    void driveBackwards(int pwmVal);
 
 	// void startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState);
     // void waitForRotation(IMU* imu, PIDController* turnPID, states& currentState);

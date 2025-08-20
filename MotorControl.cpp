@@ -40,27 +40,6 @@ void MotorController::spinCCW(int pwmVal) {
     analogWrite(mot2_pwm, pwmVal);
 }
 
-void MotorController::driveBackwards(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
-
-    digitalWrite(mot1_dir, LOW);
-    analogWrite(mot1_pwm, pwmVal);
-
-    digitalWrite(mot2_dir, HIGH);
-    analogWrite(mot2_pwm, pwmVal);
-}
-
-void MotorController::driveForwards(int pwmVal) {
-    pwmVal = constrain(pwmVal, 0, 255);
-
-    digitalWrite(mot1_dir, HIGH);
-    analogWrite(mot1_pwm, pwmVal);
-
-    digitalWrite(mot2_dir, LOW);
-    analogWrite(mot2_pwm, pwmVal);
-
-}
-
 void MotorController::stop() {
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);

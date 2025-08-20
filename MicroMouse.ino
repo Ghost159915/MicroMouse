@@ -6,16 +6,12 @@
 #include "IMU.hpp"
 #include <Wire.h>
 
-// RFRFFLFLFFRFFRFFLFFFRFLFRF
-// LFLFLFLFLFLFLFLFLFLFLFLFLFLFLFLF
-// RFRFRFRFRFRFRFRFRFRFRFRFRFRFRFRF
-
 MotorController motors(11, 12, 9, 10);
 DualEncoder encoder(2, 7, 3, 8);  // Left encoder on 2,7; Right on 3,8
 Display display(RADIUS, TICKS_PER_REV);
 
 PIDController DistancePID(0.9, 0.0, 0.3, 0.8);
-PIDController TurningPID(2.0, 0.35, 0.0, 0.8);
+PIDController TurningPID(1.92, 0.32, 0.0, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
 
 LidarSensor lidar;
@@ -36,7 +32,7 @@ void setup() {
     lidar.begin();
     encoder.reset();
     lastTime = millis();
-    motors.startCommandChain("FFLFRFF");
+    motors.startCommandChain("RR");
     imu.calibrate();
     delay(3000);
 }
@@ -49,6 +45,18 @@ void loop() {
     imu.update();
 
     switch (currentState) {
+        case COMMAND_CHAIN:
+            char activeCmd = motors.getCurrentCommand();
+            float heading = imu.yaw();
+            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+            display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
+            break;
+
+        case COMPLETE:
+            // display.showState("COMPLETE");
+            motors.stop();
+            break;
+
         case STARTUP_TURN:
             // motors.startupTurn(&imu, &TurningPID, dt, currentState);
             // display.showIMUReading(imu.yaw());
@@ -71,23 +79,11 @@ void loop() {
             // motors.wallApproachDirect(&lidar, &DistancePID, dt, &currentState, &imu, &HeadingPID, &encoder);
             break;
 
-        case COMMAND_CHAIN:
-            char activeCmd = motors.getCurrentCommand();
-            float heading = imu.yaw();
-            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
-            display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
-            break;
-
-        case COMPLETE:
-            // display.showState("COMPLETE");
+        case TEST:
             motors.stop();
             break;
 
-        case TEST:
-            break;
-
         default:
-            // display.showState("ERROR");
             motors.stop();
             break;
     }
