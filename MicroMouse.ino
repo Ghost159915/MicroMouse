@@ -55,7 +55,7 @@ void loop() {
         case COMMAND_CHAIN: {
             char activeCmd = motors.getCurrentCommand();
             float heading = imu.yaw();
-            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &lidar, &currentState, dt);
             display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
             break; 
         }
@@ -85,7 +85,7 @@ void loop() {
     	}
 
         case EXECUTING: {
-            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &lidar, &currentState, dt);
 
             if (currentState == COMPLETE) {
                 char executedCmd = motors.getCurrentCommand();

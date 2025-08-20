@@ -112,8 +112,9 @@ void MotorController::startCommandChain(const char* cmd) {
     resetInternalState();
 }
 
-void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, 
-                                         DualEncoder* encoder, IMU* imu, states* currentState, float dt) {
+void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID,
+                                         DualEncoder* encoder, IMU* imu, LidarSensor* lidar,
+                                         states* currentState, float dt) {
     if (!commandActive || commandBuffer[commandIndex] == '\0') {
         stop();
         *currentState = COMPLETE;
@@ -155,7 +156,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
         if (cmd == 'F') {
             long currentTicks = encoder->getAverageTicks();
             if (currentTicks < forwardTargetTicks && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-                driveStraightDualEncoder(encoder, imu, headingPID, dt, DEFAULT_FORWARD_PWM);
+                driveStraightDualEncoder(encoder, imu, lidar, headingPID, dt, DEFAULT_FORWARD_PWM);
             } else {
                 stop();
                 commandIndex += forwardRunLength;
@@ -186,35 +187,43 @@ void MotorController::resetInternalState() {
     for (int i = 0; i < 5; ++i) wallDistanceBuffer[i] = 100.0f;
 }
 
-void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM) {
+void MotorController::driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, LidarSensor* lidar,
+                                               PIDController* headingPID, float dt, float basePWM) {
 
-    bool movingForward = basePWM >= 0;
-    int absPWM = abs(basePWM);
-
-	long leftTicks = encoder->getLeftTicks();
+    long leftTicks = encoder->getLeftTicks();
     long rightTicks = encoder->getRightTicks();
     long tickDiff = leftTicks - rightTicks;
-    
+
     imu->update();
     float headingError = wrap180(headingTarget - imu->yaw());
-    
-    float encoderCorrection = tickDiff * 0.5;  
-    float imuCorrection = headingPID->compute(0.0, -headingError, dt);
 
-    float totalCorrection = (encoderCorrection * 0.7) + (imuCorrection * 0.3);
+    float encoderCorrection = tickDiff * 0.5f;
+    float imuCorrection = headingPID->compute(0.0f, -headingError, dt);
+
+    float lidarCorrection = 0.0f;
+    float leftDist = lidar->getLeftDistance();
+    float rightDist = lidar->getRightDistance();
+    if (leftDist < 300.0f && rightDist < 300.0f) {
+        float sideError = leftDist - rightDist;
+        lidarCorrection = sideError * 0.1f;
+    }
+
+    float totalCorrection = (encoderCorrection * 0.5f) +
+                            (imuCorrection * 0.3f) +
+                            (lidarCorrection * 0.2f);
     totalCorrection = constrain(totalCorrection, -50, 50);
-    
+
     int leftPWM = basePWM - totalCorrection;
     int rightPWM = basePWM + totalCorrection;
-    
+
     if (leftPWM > 0 && leftPWM < 60) leftPWM = 60;
     if (rightPWM > 0 && rightPWM < 60) rightPWM = 60;
-    
+
     leftPWM = constrain(leftPWM, 0, 255);
     rightPWM = constrain(rightPWM, 0, 255);
-    
-    digitalWrite(mot1_dir, HIGH);  
-    digitalWrite(mot2_dir, LOW);   
+
+    digitalWrite(mot1_dir, HIGH);
+    digitalWrite(mot2_dir, LOW);
     analogWrite(mot1_pwm, leftPWM);
     analogWrite(mot2_pwm, rightPWM);
 }

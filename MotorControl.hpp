@@ -35,11 +35,14 @@ public:
     bool updateTurn(IMU* imu, PIDController* turnPID, float dt);
 
 
-    void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM);
+    void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, LidarSensor* lidar,
+                                 PIDController* headingPID, float dt, float basePWM);
 
     void startCommandChain(const char* cmd);
     void resetInternalState();
-    void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
+    void processCommandStep(PIDController* turnPID, PIDController* headingPID,
+                            DualEncoder* encoder, IMU* imu, LidarSensor* lidar,
+                            states* currentState, float dt);
 
     char getCurrentCommand();
 
