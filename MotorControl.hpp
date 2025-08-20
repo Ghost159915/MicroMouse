@@ -6,14 +6,16 @@
 #include "Encoder.hpp"
 #include "PIDController.hpp"
 #include "LidarSensor.hpp"
+#include "KalmanFilter.hpp"
 
 static constexpr float CELL_DISTANCE   = 180.0f;
-static constexpr int   TICKS_PER_REV   = 700;
-static constexpr float RADIUS          = 16.0f;
+static constexpr int TICKS_PER_REV   = 700;
+static constexpr float RADIUS = 16.0f;
 static constexpr unsigned long MOVE_TIMEOUT = 3000;  // ms
 static constexpr unsigned long TURN_DURATION_MS = 1300; // ms
 static constexpr unsigned long WALL_APPROACH_MS = 20000;
 static constexpr unsigned long DEFAULT_FORWARD_PWM = 100;
+static constexpr float WHEEL_BASE = 900;
 
 enum states {
     STARTUP_TURN,
@@ -35,7 +37,7 @@ public:
     void stop();
 
     void startTurn(char direction, IMU* imu, PIDController* turnPID);
-    bool updateTurn(IMU* imu, PIDController* turnPID, float dt);
+    bool updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder); // updated signature
 
     void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM);
 
@@ -54,6 +56,8 @@ public:
 
 private:
     int mot1_pwm, mot1_dir, mot2_pwm, mot2_dir;
+
+    KalmanFilter yawFilter;
 
     char commandBuffer[64];
     int commandIndex;
