@@ -23,7 +23,8 @@ enum states {
     WALL_APPROACH,
     COMMAND_CHAIN,
     COMPLETE,
-    TEST
+    TEST,
+    FORWARD
 };
 
 class MotorController {
@@ -54,14 +55,19 @@ public:
     //                        PIDController* headingPID, DualEncoder* encoder);
 
 void forwardPWMsWithWalls(
-    DualEncoder& enc,
-    IMU&         imu,            // imu.yawRel() ~ 0 when straight
-    PIDController& headingPID,   // holds yawRel @ 0 deg
-    PIDController& wallPID,      // centers (L-R) @ 0
-    LidarSensor&  lidar,
+    DualEncoder* enc,
+    IMU*         imu,            // imu.yawRel() ~ 0 when straight
+    PIDController* headingPID,   // holds yawRel @ 0 deg
+    PIDController* wallPID,      // centers (L-R) @ 0
+    LidarSensor*  lidar,
     int           basePWM,
     float         dt
 );
+
+// MotorControl.hpp (inside class MotorController public:)
+void driveForwards(int pwmVal);
+void driveBackwards(int pwmVal);
+
 
 private:
     int mot1_pwm, mot1_dir, mot2_pwm, mot2_dir;

@@ -13,7 +13,7 @@ Display display(RADIUS, TICKS_PER_REV);
 PIDController DistancePID(0.9, 0.0, 0.3, 0.8);
 PIDController TurningPID(1.92, 0.32, 0.0, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
-PIDController WallPID(0.5, 0.0, 0.3);
+PIDController WallPID(0.3, 0.0, 0.3);
 
 LidarSensor lidar;
 IMU imu;
@@ -35,7 +35,7 @@ void setup() {
     lastTime = millis();
 
     currentState = FORWARD;            // start in forward test mode
-    motors.startCommandChain("RR");
+    //motors.startCommandChain("RR");
 
     imu.calibrate();
     delay(3000);
@@ -66,6 +66,8 @@ void loop() {
         }
 
         case FORWARD: {
+            char activeCmd = motors.getCurrentCommand();
+            float heading = imu.yaw();
             static bool init = false;
             if (!init) {
                 imu.zeroYaw();         // lock heading for this segment
@@ -74,10 +76,10 @@ void loop() {
                 init = true;
             }
 
-            const int basePWM = 120;   // or your DEFAULT_FORWARD_PWM
+            const int basePWM = 60;   // or your DEFAULT_FORWARD_PWM
             motors.forwardPWMsWithWalls(&encoder, &imu, &HeadingPID, &WallPID, &lidar,
                                         basePWM, dt);
-            delay(5000);               // test pause; remove for continuous control
+            display.showCommandStatus("FORWARD", activeCmd, heading);
             break;
         }
 
