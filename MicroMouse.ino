@@ -7,11 +7,11 @@
 #include <Wire.h>
 
 MotorController motors(11, 12, 9, 10);
-DualEncoder encoder(2, 7, 3, 8);  // Left encoder on 2,7; Right on 3,8
+DualEncoder encoder(3, 8, 2, 7);  // Left encoder on 2,7; Right on 3,8 HAD TO SWAP THE ORDER TO GET THEM TO WORK, INITIALLY IT WAS encoder(2, 7, 3, 8)
 Display display(RADIUS, TICKS_PER_REV);
 
 PIDController DistancePID(0.9, 0.0, 0.3, 0.8);
-PIDController TurningPID(1.92, 0.32, 0.0, 0.8);
+PIDController TurningPID(1, 0.5, 0.32, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
 PIDController WallPID(0.3, 0.0, 0.3);
 
@@ -21,7 +21,7 @@ IMU imu;
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
 
-states currentState = COMMAND_CHAIN;
+states currentState = FORWARD;
 
 void setup() {
     Serial.begin(9600);
@@ -34,8 +34,9 @@ void setup() {
     encoder.reset();
     lastTime = millis();
 
-    currentState = COMMAND_CHAIN;            // start in forward test mode
-    motors.startCommandChain("R");
+    currentState = COMMAND_CHAIN;          
+    motors.startCommandChain("F");
+    // FRFFRFLFFLFLFRFRFLFLFFFF
 
     imu.calibrate();
     delay(1500);
@@ -55,7 +56,7 @@ void loop() {
             Serial.print("Heading: ");
             Serial.println(heading);
 
-            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+            motors.processCommandStep(&TurningPID, &HeadingPID, &WallPID, &encoder, &imu, &currentState, &lidar, dt);
             display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
             break;
         }
@@ -109,7 +110,13 @@ void loop() {
             break;
 
         case TEST:
-            motors.stop();
+            static unsigned long t0 = millis();
+            if (millis() - t0 > 300) {
+            t0 = millis();
+            Serial.print("L="); Serial.print(encoder.getLeftTicks());
+            Serial.print("  R="); Serial.println(encoder.getRightTicks());
+}
+
             break;
 
         default:

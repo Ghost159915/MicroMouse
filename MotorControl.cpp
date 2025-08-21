@@ -1,9 +1,9 @@
 #include "MotorControl.hpp"
 #include "KalmanFilter.hpp"
 
-static constexpr float wEnc       = 0.2f;   // blend weights: encoders > IMU > walls
-static constexpr float wIMU       = 0.2f;
-static constexpr float wWall      = 0.6f;
+static constexpr float wEnc       = 0.0f;   // blend weights: encoders > IMU > walls
+static constexpr float wIMU       = 0.0f;
+static constexpr float wWall      = 1.0f;
 
 static constexpr float kEncGain   = 0.50f;  // ticks -> steering scale
 static constexpr float kIMUClamp  = 45.0f;  // deg clamp before PID
@@ -12,6 +12,17 @@ static constexpr float kSteerMax  = 60.0f;  // overall steering clamp
 static constexpr float kSpeedMax  = 30.0f;  // (optional) common speed clamp
 static constexpr int   kMinPWM    = 60;     // overcome static friction
 static constexpr int   kMaxPWM    = 255;    // PWM ceiling
+
+// Tunings: start with these and tweak
+static KalmanFilter yawKF(/*Q*/0.5f, /*R*/9.0f, /*P0*/1.0f, /*x0*/0.0f);
+// Q ~ process variance per step (trust gyro more ⇢ larger Q).
+// R ~ measurement variance (trust encoders more ⇢ smaller R).
+
+// KF working vars for each turn (relative frame)
+static float kfPrevImuYaw = 0.0f;   // last absolute IMU yaw (deg)
+static float kfEncYawRel  = 0.0f;   // accumulated encoder yaw since turn start (deg)
+static float turnTargetRelDeg = 0.0f; // ±90 target in relative frame
+
 
 static inline bool validSideMM(float d) { return isfinite(d) && d > 40.f && d < 1200.f; }
 static inline float clampf(float x, float lo, float hi){ return x < lo ? lo : (x > hi ? hi : x); }
@@ -89,79 +100,118 @@ void MotorController::stop() {
     analogWrite(mot1_pwm, 0);
     analogWrite(mot2_pwm, 0);
 }
+
 void MotorController::startTurn(char direction, IMU* imu, PIDController* turnPID) {
-    // Fresh heading before computing target
-    imu->update();
-    float startYaw = imu->yaw();
+    // Target in degrees: R (CW) = -90, L (CCW) = +90
+    turnTargetYaw  = (direction == 'R' || direction == 'r') ? -90.0f : +90.0f;
+    turnInProgress = true;
+    turnStartTime  = millis();
 
-    // 90° right is negative (CW), left is positive (CCW) in our convention
-    float delta = (direction == 'R' || direction == 'r') ? -90.0f : +90.0f;
-
-    turnTargetYaw   = wrap180(startYaw + delta);
-    turnInProgress  = true;
-    turnStartTime   = millis();
-
-    // Run turn PID as PD (Ki=0) — ensure tunings were set elsewhere; just reset here.
+    // Reset controllers & sensors for a RELATIVE frame
     turnPID->reset();
+    imu->update();
+    imu->zeroYaw();               // so imu->yawRel() starts at 0 deg
 
-    // IMPORTANT: do NOT zeroYaw() here — only after the turn completes.
+    // Init Kalman filter state at 0 deg in this relative frame
+    yawKF.init(0.0f);
 }
-
-
 
 bool MotorController::updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder) {
     if (!turnInProgress) return true;
-    (void)encoder; // unused (no Kalman/encoders in this version)
 
-    // --- read IMU yaw (degrees) ---
-    imu->update();
-    float currentYaw = imu->yaw();                       // absolute heading in deg
-    Serial.print("current yaw:");
-    Serial.println(currentYaw);
+    // per-turn state
+    static bool  inited = false;
+    static long  prevL = 0, prevR = 0;
+    static float prevFused = 0.0f;
+    static int   lastPWM = 0;
+    static unsigned long dwellStart = 0;
 
-    // --- control error (desired - actual), wrapped to [-180, 180] ---
-    float err = wrap180(turnTargetYaw - currentYaw);
-
-    // --- use your Turning PID as PD (ensure Ki=0; reset done in startTurn) ---
-    // If PID::compute(setpoint, measurement) = setpoint - measurement:
-    float u = turnPID->compute(0.0f, -err, dt);          // ≈ Kp*err + Kd*d(err)/dt
-
-    // --- adaptive PWM cap based on ANGLE error (not controller output) ---
-    auto pwmCapFromErr = [](float eAbs)->int {
-        if (eAbs >= 60.f) return 150;    // far → faster
-        if (eAbs >= 30.f) return 120;
-        if (eAbs >= 15.f) return 95;
-        if (eAbs >=  6.f) return 80;
-        return 65;                       // very close → crawl
-    };
-    int pwmCap = pwmCapFromErr(fabs(err));
-
-    const int kMinTurnPWM = 60;                           // tweak if stalling
-    int pwm = constrain((int)fabs(u), kMinTurnPWM, min(pwmCap, kMaxPWM));
-
-    // --- drive motors (flip CW/CCW here if your wiring is opposite) ---
-    if (u > 0) {
-        spinCCW(pwm);
-    } else {
-        spinCW(pwm);
+    if (!inited) {
+        prevL = encoder->getLeftTicks();
+        prevR = encoder->getRightTicks();
+        prevFused = 0.0f;
+        lastPWM = 0;
+        dwellStart = 0;
+        inited = true;
     }
 
-    // --- stop when angle AND spin-rate are small ---
-    static float prevErr = 0.0f;
-    float errDot = (dt > 1e-4f) ? (err - prevErr) / dt : 0.0f;  // ~deg/s
-    prevErr = err;
+    // --- encoder incremental yaw (deg) ---
+    long L = encoder->getLeftTicks(), R = encoder->getRightTicks();
+    long dL = L - prevL, dR = R - prevR;
+    prevL = L; prevR = R;
 
-    const float ANG_EPS  = 2.0f;    // degrees
-    const float RATE_EPS = 18.0f;   // deg/s (from errDot)
-    if (fabs(err) < ANG_EPS && fabs(errDot) < RATE_EPS) {
-        stop();
-        turnInProgress = false;
-        imu->zeroYaw();             // make current heading = 0 for next straight
-        prevErr = 0.0f;             // re-arm for next turn
-        return true;
+    float leftDist  = (2.0f * PI * RADIUS) * ((float)dL / (float)TICKS_PER_REV);
+    float rightDist = (2.0f * PI * RADIUS) * ((float)dR / (float)TICKS_PER_REV);
+    float dYawEnc   = ((rightDist - leftDist) / WHEEL_BASE) * (180.0f / PI); // CW negative
+
+    // --- KF: predict with enc, update with IMU yawRel ---
+    yawKF.predict(dYawEnc);
+    imu->update();
+    yawKF.update(imu->yawRel());
+
+    float fusedYaw = yawKF.getState();
+    while (fusedYaw > 180.f) fusedYaw -= 360.f;
+    while (fusedYaw < -180.f) fusedYaw += 360.f;
+
+    // --- control: PD with derivative on measurement (rate damping) ---
+    float err = (turnTargetYaw - fusedYaw);        // deg
+    float fusedRate = (dt > 1e-4f) ? (fusedYaw - prevFused) / dt : 0.0f; // deg/s
+    prevFused = fusedYaw;
+
+    // Use your PID's P only; do D here on measurement for robustness
+    float u_p  = turnPID->compute(0.0f, -err, dt); // with Ki=0 in the PID
+    const float KD_RATE = 0.55f;                   // tune 0.45–0.75
+    float u = u_p - KD_RATE * fusedRate;
+
+    // tiny predictive cutoff (very conservative)
+    const float LOOKAHEAD_S = 0.06f, ANG_SOFT = 0.8f;
+    if (fabsf(err) < LOOKAHEAD_S * fabsf(fusedRate) + ANG_SOFT) {
+        stop(); turnInProgress = false; inited = false; return true;
+    }
+
+    // --- PWM shaping (don’t starve torque near target) ---
+    auto pwmCapFromErr = [](float eAbs)->int {
+        if (eAbs >= 60.f) return 130;
+        if (eAbs >= 30.f) return 110;
+        if (eAbs >= 15.f) return 90;
+        if (eAbs >=  6.f) return 75;
+        return 65;
+    };
+    int pwmCap = pwmCapFromErr(fabsf(err));
+    int pwm    = constrain((int)fabsf(u), 65, min(pwmCap, kMaxPWM));
+
+    // slew limit
+    const int maxStep = 10;
+    if (pwm > lastPWM + maxStep) pwm = lastPWM + maxStep;
+    else if (pwm < lastPWM - maxStep) pwm = lastPWM - maxStep;
+    lastPWM = pwm;
+
+    // drive
+    if (u > 0) spinCCW(pwm); else spinCW(pwm);
+
+    // --- stop when in window for 150 ms (dwell) ---
+    const float ANG_EPS = 2.5f, RATE_EPS = 25.0f;  // tune
+    if (fabsf(err) < ANG_EPS && fabsf(fusedRate) < RATE_EPS) {
+        if (dwellStart == 0) dwellStart = millis();
+        if (millis() - dwellStart >= 150) {
+            stop(); turnInProgress = false; inited = false; return true;
+        }
+    } else {
+        dwellStart = 0;
+    }
+
+    // safety
+    if (millis() - turnStartTime > 10000) {
+        stop(); turnInProgress = false; inited = false; return true;
     }
     return false;
 }
+
+
+
+
+
+
 
 
 
@@ -174,8 +224,8 @@ void MotorController::startCommandChain(const char* cmd) {
     resetInternalState();
 }
 
-void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID,
-                                         DualEncoder* encoder, IMU* imu, states* currentState, float dt) {
+void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, PIDController* wallPID,
+                                         DualEncoder* encoder, IMU* imu, states* currentState, LidarSensor* lidar, float dt) {
     if (!commandActive || commandBuffer[commandIndex] == '\0') {
         stop();
         *currentState = COMPLETE;
@@ -217,7 +267,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
         if (cmd == 'F') {
             long currentTicks = encoder->getAverageTicks();
             if (currentTicks < forwardTargetTicks && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-                driveStraightDualEncoder(encoder, imu, headingPID, dt, DEFAULT_FORWARD_PWM);
+                forwardPWMsWithWalls(encoder, imu, headingPID, wallPID, lidar, DEFAULT_FORWARD_PWM, dt);
             } else {
                 stop();
                 commandIndex += forwardRunLength;

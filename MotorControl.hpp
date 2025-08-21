@@ -46,7 +46,8 @@ public:
 
     void startCommandChain(const char* cmd);
     void resetInternalState();
-    void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
+    void processCommandStep(PIDController* turnPID, PIDController* headingPID, PIDController* wallPID,
+                                         DualEncoder* encoder, IMU* imu, states* currentState, LidarSensor* lidar, float dt);
     char getCurrentCommand();
 
     float getFusedYaw() const;

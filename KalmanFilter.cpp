@@ -22,3 +22,8 @@ void KalmanFilter::update(float z) {
 float KalmanFilter::getState() const {
     return x;
 }
+
+void KalmanFilter::setR(float r) { R = r; }
+
+void KalmanFilter::setQ(float q) { Q = q; }
+

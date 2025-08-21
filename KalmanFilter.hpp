@@ -19,4 +19,7 @@ public:
     void update(float z);
 
     float getState() const;
+
+    void setR(float r);
+    void setQ(float q);
 };
