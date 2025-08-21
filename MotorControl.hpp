@@ -61,15 +61,13 @@ public:
     //                        float dt, states* currentState, IMU* imu,
     //                        PIDController* headingPID, DualEncoder* encoder);
 
-void forwardPWMsWithWalls(
-    DualEncoder* enc,
-    IMU*         imu,            // imu.yawRel() ~ 0 when straight
-    PIDController* headingPID,   // holds yawRel @ 0 deg
-    PIDController* wallPID,      // centers (L-R) @ 0
-    LidarSensor*  lidar,
-    int           basePWM,
-    float         dt
-);
+void forwardWallEncImu(DualEncoder* enc,
+                       IMU* imu,
+                       PIDController* headingPID,
+                       PIDController* wallPID,
+                       LidarSensor* lidar,
+                       int basePWM,
+                       float dt);
 
 // MotorControl.hpp (inside class MotorController public:)
 void driveForwards(int pwmVal);

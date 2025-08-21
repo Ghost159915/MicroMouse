@@ -1,9 +1,9 @@
 #include "MotorControl.hpp"
 #include "KalmanFilter.hpp"
 
-static constexpr float wEnc       = 0.0f;   // blend weights: encoders > IMU > walls
+static constexpr float wEnc       = 0.2f;   // blend weights: encoders > IMU > walls
 static constexpr float wIMU       = 0.0f;
-static constexpr float wWall      = 1.0f;
+static constexpr float wWall      = 10.0f;
 
 static constexpr float kEncGain   = 0.50f;  // ticks -> steering scale
 static constexpr float kIMUClamp  = 45.0f;  // deg clamp before PID
@@ -267,7 +267,7 @@ void MotorController::processCommandStep(PIDController* turnPID, PIDController* 
         if (cmd == 'F') {
             long currentTicks = encoder->getAverageTicks();
             if (currentTicks < forwardTargetTicks && (millis() - moveStartTime) < MOVE_TIMEOUT) {
-                forwardPWMsWithWalls(encoder, imu, headingPID, wallPID, lidar, DEFAULT_FORWARD_PWM, dt);
+            forwardWallEncImu(encoder, imu, headingPID, wallPID, lidar, 100, dt);
             } else {
                 stop();
                 commandIndex += forwardRunLength;
@@ -392,74 +392,79 @@ float MotorController::getFusedYaw() const {
 //     }
 // }
 
-void MotorController::forwardPWMsWithWalls(
-    DualEncoder*   enc,
-    IMU*           imu,            // imu->yawRel() ~ 0 when straight
-    PIDController* headingPID,     // holds yawRel @ 0 deg
-    PIDController* wallPID,        // centers (L-R) @ 0
-    LidarSensor*   lidar,
-    int            basePWM,
-    float          dt
-){
-    // Only operate while moving forward; otherwise stop and return
-    if (basePWM <= 0) {
-        stop();
-        return;
-    }
+void MotorController::forwardWallEncImu(DualEncoder* enc,
+                                        IMU* imu,
+                                        PIDController* headingPID,
+                                        PIDController* wallPID,
+                                        LidarSensor* lidar,
+                                        int basePWM,
+                                        float dt) {
+    // Only do centering/straightening when actually driving forward
+    if (basePWM <= 0) { stop(); return; }
 
-    // --- 1) Encoder steering term: keep wheel ticks matched ---
+    // === A) ENCODER term: keep wheel ticks matched ===
     long lt = enc->getLeftTicks();
     long rt = enc->getRightTicks();
-    float encDelta = static_cast<float>(lt - rt);     // >0: left advanced more
-    float encCorr  = kEncGain * encDelta;
+    float encDelta = static_cast<float>(lt - rt);  // >0: left advanced more than right
+    float encCorr  = kEncGain * encDelta;          // simple proportional steering from encoders
 
-    // --- 2) IMU heading term: keep yawRel @ 0 deg ---
+    // === B) IMU term: hold yawRel ≈ 0 deg ===
     imu->update();
-    float yawRelDeg = imu->yawRel();                  // measurement
+    float yawRelDeg = imu->yawRel();                          // assume you zeroYaw() when F starts
     float imuMeas   = clampf(yawRelDeg, -kIMUClamp, kIMUClamp);
+    // PID on measurement (setpoint=0) → returns negative of "meas" scaled by gains
     float imuCorr   = headingPID->compute(0.0f, imuMeas, dt);
-    // If your PID expects "error" instead of "measurement":
-    // float imuCorr = headingPID->compute(0.0f, -imuMeas, dt);
 
-    // --- 3) Wall centering term: (left - right) -> 0 ---
-    float lmm = lidar->getLeftDistance();
-    Serial.print("left lidar: ");
-    Serial.println(lmm);
-    float rmm = lidar->getRightDistance();
-    Serial.print("right lidar: ");
-    Serial.println(rmm);
-    float wallCorr = 0.0f;
+    // === C) WALL term: center between side walls (left - right) → 0 ===
+    const float lmm = lidar->getLeftDistance();
+    const float rmm = lidar->getRightDistance();
+    float wallErr   = lmm - rmm;                               // centered → 0
+    // small deadband to avoid twitch
+    if (fabsf(wallErr) < 2.0f) wallErr = 0.0f;
 
-    float wallErr = lmm - rmm;                    // centered → 0
-    Serial.print("wall error: ");
-    Serial.println(wallErr);
-    wallCorr = wallPID->compute(0.0f, wallErr, dt);
-    wallCorr = clampf(wallCorr, -kWallClamp, kWallClamp);
-    
+    float wallCorr  = wallPID->compute(0.0f, wallErr, dt);
+    wallCorr        = clampf(wallCorr, -kWallClamp, kWallClamp);
 
-    // --- 4) Single steering correction (anti-symmetric) ---
-    float steerCorr = wEnc*encCorr + wIMU*imuCorr + wWall*wallCorr;
-    steerCorr = clampf(steerCorr, -kSteerMax, kSteerMax);
+    // === D) Blend into one steering correction (anti-symmetric) ===
+    // Weights are the constants you already have at the top: wEnc, wIMU, wWall
+    float steerCorr = wEnc * encCorr + wIMU * imuCorr + wWall * wallCorr;
+    steerCorr       = clampf(steerCorr, -kSteerMax, kSteerMax);
 
-    // --- 5) Optional symmetric speed correction (keep simple/0 for now) ---
-    float speedCorr = 0.0f; // or your speed PID
-    speedCorr = clampf(speedCorr, -kSpeedMax, kSpeedMax);
+    // Optional: symmetric speed trim (keep 0 for now)
+    float speedCorr = 0.0f;  // could drive a "speed PID" later
+    speedCorr       = clampf(speedCorr, -kSpeedMax, kSpeedMax);
 
-    // --- 6) Compose wheel PWMs: common ± differential ---
+    // === E) Compose wheel PWMs: common ± differential ===
+    // NOTE: signs match your existing forward logic:
+    //  - Positive steerCorr → leftPWM ↓, rightPWM ↑ (turn right)
     int leftPWM  = static_cast<int>(basePWM + speedCorr - steerCorr);
     int rightPWM = static_cast<int>(basePWM + speedCorr + steerCorr);
 
-    // Minimums & clamps
+    // Minimums & clamps (forward only)
     if (leftPWM  > 0 && leftPWM  < kMinPWM) leftPWM  = kMinPWM;
     if (rightPWM > 0 && rightPWM < kMinPWM) rightPWM = kMinPWM;
     leftPWM  = static_cast<int>(clampf(leftPWM,  0, kMaxPWM));
     rightPWM = static_cast<int>(clampf(rightPWM, 0, kMaxPWM));
 
-    digitalWrite(mot1_dir, HIGH);
-    digitalWrite(mot2_dir, LOW);
+    // === F) Drive forward ===
+    digitalWrite(mot1_dir, HIGH);  // left forward
+    digitalWrite(mot2_dir, LOW);   // right forward
     analogWrite(mot1_pwm, leftPWM);
     analogWrite(mot2_pwm, rightPWM);
+
+    // // Optional debug
+    // Serial.print("encΔ=");  Serial.print(encDelta);
+    // Serial.print(" imu=");  Serial.print(yawRelDeg);
+    // Serial.print(" wall="); Serial.print(wallErr);
+    // Serial.print(" | corr(e,i,w)=(");
+    // Serial.print(encCorr);  Serial.print(",");
+    // Serial.print(imuCorr);  Serial.print(",");
+    // Serial.print(wallCorr); Serial.print(")");
+    // Serial.print(" -> steer="); Serial.println(steerCorr);
 }
+
+
+
 
 // (startup/return-to-heading helpers are commented out below)
 // ...
