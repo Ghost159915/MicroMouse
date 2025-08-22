@@ -5,6 +5,8 @@
 #include "LidarSensor.hpp"
 #include "IMU.hpp"
 #include <Wire.h>
+#include "FloodFill.hpp"
+#include "MazeMapper.hpp"
 
 MotorController motors(11, 12, 9, 10);
 DualEncoder encoder(3, 8, 2, 7);  // Left encoder on 2,7; Right on 3,8 HAD TO SWAP THE ORDER TO GET THEM TO WORK, INITIALLY IT WAS encoder(2, 7, 3, 8)
@@ -15,13 +17,19 @@ PIDController TurningPID(1, 0.5, 0.32, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
 PIDController WallPID(0.8, 0.0, 0.3);
 
+MazeMapper mapper(/*startX*/0, /*startY*/0, MazeMapper::NORTH);
+
 LidarSensor lidar;
 IMU imu;
 
 unsigned long lastTime = 0;
 float rotationOffset = 0.0;
 
+FloodFill flood(0,0,7,7);
+
 states currentState = TEST;
+
+bool AUTONOMOUS_MAPPING = true; // set this value to true or false based on whether we are doing part 4.3 or not
 
 void setup() {
     Serial.begin(9600);
@@ -38,6 +46,8 @@ void setup() {
     motors.startCommandChain("FRFFRFLFFLFLFRFRFLFLFFFF");
     // FRFFRFLFFLFLFRFRFLFLFFFF
 
+    flood.initialiseDistanceMaze();
+
     imu.calibrate();
     delay(1500);
 }
@@ -52,12 +62,18 @@ void loop() {
     switch (currentState) {
         case COMMAND_CHAIN: {
             char activeCmd = motors.getCurrentCommand();
-            float heading = imu.yaw();
-            Serial.print("Heading: ");
-            Serial.println(heading);
-
-            motors.processCommandStep(&TurningPID, &HeadingPID, &WallPID, &encoder, &imu, &currentState, &lidar, dt);
-            display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
+            if(AUTONOMOUS_MAPPING) {
+                currentState = FLOOD_FILL_MAPPING
+            }else if(activeCmd == '\0' || !(motors.getCommandActive())) {
+                currentState = COMPLETE;
+            }
+            // change the heading 
+            motors.processCommandStep(&TurningPID, &HeadingPID, &WallPID, &encoder, &imu, &currentState, &lidar, dt);   
+            if(AUTONOMOUS_MAPPING) {
+                activeCmd = motors.getCurrentCommand();
+                if (activeCmd == 'L') flood.setCurrentDir(flood.turnLeft(flood.getCurrentDir()));
+                else if (activeCmd == 'R') flood.setCurrentDir(flood.turnLeft(flood.getCurrentDir()));
+            }
             break;
         }
 
@@ -69,54 +85,87 @@ void loop() {
             break;
         }
 
-        case FORWARD: {
-            char activeCmd = motors.getCurrentCommand();
-            float heading = motors.getFusedYaw();
-            static bool init = false;
-            if (!init) {
-                imu.zeroYaw();         // lock heading for this segment
-                HeadingPID.reset();
-                WallPID.reset();
-                init = true;
-            }
+        case FLOOD_FILL_MAPPING: {
+            if (flood.isGoalReached()) {
+                currentState = RETURN_TO_START;
+            } else {
+                Dir currDir = flood.getCurrentDir();
+                Dir cheapestDir = flood.getCheapest();
+                char lidarCheck = headingToCommand(currDir, cheapestDir);
 
-            const int basePWM = 100;   // or your DEFAULT_FORWARD_PWM
-            motors.forwardWallEncImu(&encoder, &imu, &HeadingPID, &WallPID, &lidar, basePWM, dt);
-            display.showCommandStatus("FORWARD", activeCmd, heading);
+                int distance = 0;
+                if (lidarCheck == 'L') {
+                    distance = lidar.getLeftDistance();
+                } else if (lidarCheck == 'R') {
+                    distance = lidar.getRightDistance();
+                } else if (lidarCheck == 'F') {
+                    distance = lidar.getFrontDistance();
+                }
+
+                if (distance <= 100) {
+                    // Blocked → mark wall
+                    flood.placeWall(cheapestDir);
+                } else {
+                    // Valid path → build command string like "LF", "RF", or "F"
+                    std::string command(1, lidarCheck);
+                    if (lidarCheck != 'F') {
+                        command += 'F';
+                    }
+                    motors.startCommandChain(command);
+                }
+
+                currentState = COMMAND_CHAIN;
+            }
             break;
         }
 
-        case STARTUP_TURN:
-            // motors.startupTurn(&imu, &TurningPID, dt, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
+        case BACKUP_MAPPING: {
+            // 1) Read LiDAR once
+            int l = (int)lidar.getLeftDistance();
+            int f = (int)lidar.getFrontDistance();
+            int r = (int)lidar.getRightDistance();
 
-        case WAIT_FOR_ROTATION:
-            // motors.waitForRotation(&imu, &TurningPID, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
+            // 2) Ask the mapper to observe + plan a tiny command
+            const char* cmd = mapper.planStepAndBuildCommand(l, f, r, /*block<=*/100);
 
-        case RETURN_TO_HEADING:
-            // motors.returnToHeading(&imu, &TurningPID, dt, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
+            // 3) If boxed-in or nothing to do, print map and STOP
+            if (!cmd || cmd[0] == '\0') {
+                mapper.printAscii();
+                currentState = COMPLETE;
+                break;
+            }
 
-        case WALL_APPROACH:
-            // display.showLidarDistance(lidar.getLeftDistance(),
-            //                           lidar.getFrontDistance(),
-            //                           lidar.getRightDistance());
-            // motors.wallApproachDirect(&lidar, &DistancePID, dt, &currentState, &imu, &HeadingPID, &encoder);
-            break;
+            // 4) Send the tiny command to your existing chain executor
+            motors.startCommandChain(cmd);
 
-        case TEST:
-            static unsigned long t0 = millis();
-            if (millis() - t0 > 300) {
-            t0 = millis();
-            Serial.print("L="); Serial.print(encoder.getLeftTicks());
-            Serial.print("  R="); Serial.println(encoder.getRightTicks());
-}
-
+            // 5) Hand off to your normal COMMAND_CHAIN state
+            currentState = COMMAND_CHAIN;
             break;
+        }
+
+        case COMMAND_CHAIN_BACKUP: {
+            // run your existing processCommandStep(...)
+            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+
+            // Detect end of chain (your code may already do this)
+            if (!motors.getCommandActive()) {
+                // Recover the command that just finished. If your MotorController
+                // doesn't expose the *last* command easily, keep a copy when you call startCommandChain.
+                // For simplicity, cache it in a global:
+                //   lastIssuedCmdString
+                mapper.applyExecutedCommand(lastIssuedCmdString);
+
+                // Optional: print a map every few steps
+                static uint8_t stepCount=0;
+                if ((++stepCount % 6) == 0) mapper.printAscii();
+
+                // Go back to BACKUP_MAPPING for next step
+                currentState = BACKUP_MAPPING;
+            }
+            break;
+        }
+
+
 
         default:
             motors.stop();

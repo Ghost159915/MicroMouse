@@ -27,7 +27,10 @@ enum states {
     COMMAND_CHAIN,
     COMPLETE,
     TEST,
-    FORWARD
+    FORWARD,
+    FLOOD_FILL_MAPPING,
+    BACKUP_MAPPING,
+    COMMAND_CHAIN_BACKUP
 };
 
 class MotorController {
@@ -72,6 +75,8 @@ void forwardWallEncImu(DualEncoder* enc,
 // MotorControl.hpp (inside class MotorController public:)
 void driveForwards(int pwmVal);
 void driveBackwards(int pwmVal);
+
+bool getCommandActive();
 
 
 private:

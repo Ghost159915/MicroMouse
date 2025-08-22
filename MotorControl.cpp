@@ -224,14 +224,7 @@ void MotorController::startCommandChain(const char* cmd) {
     resetInternalState();
 }
 
-void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, PIDController* wallPID,
-                                         DualEncoder* encoder, IMU* imu, states* currentState, LidarSensor* lidar, float dt) {
-    if (!commandActive || commandBuffer[commandIndex] == '\0') {
-        stop();
-        *currentState = COMPLETE;
-        return;
-    }
-
+void MotorController::processCommandStep(PIDController* turnPID, PIDController* headingPID, PIDController* wallPID, DualEncoder* encoder, IMU* imu, states* currentState, LidarSensor* lidar, float dt) {
     char cmd = commandBuffer[commandIndex];
 
     if (!moveInProgress) {
@@ -338,6 +331,10 @@ char MotorController::getCurrentCommand() {
 
 float MotorController::getFusedYaw() const {
     return wrap180(yawFilter.getState());
+}
+
+bool MotorController::getCommandActive() {
+    return commandActive;
 }
 
 // void MotorController::wallApproachDirect(LidarSensor* lidar, PIDController* DistancePID, float dt, states* currentState, IMU* imu) {
