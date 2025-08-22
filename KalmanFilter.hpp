@@ -8,7 +8,7 @@ private:
     float x;   // Current state estimate (heading in degrees)
 
 public:
-    KalmanFilter(float q = 0.5f, float r = 4.0f, float initialP = 1.0f, float initialX = 0.0f);
+    KalmanFilter(float q = 0.3f, float r = 6.0f, float initialP = 1.0f, float initialX = 0.0f);
 
     void init(float initialX);
 
@@ -19,4 +19,7 @@ public:
     void update(float z);
 
     float getState() const;
+
+    void setR(float r);
+    void setQ(float q);
 };

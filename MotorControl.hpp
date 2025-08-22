@@ -6,25 +6,22 @@
 #include "Encoder.hpp"
 #include "PIDController.hpp"
 #include "LidarSensor.hpp"
-#include "KalmanFilter.hpp"
 
 static constexpr float CELL_DISTANCE   = 180.0f;
-static constexpr int TICKS_PER_REV   = 700;
-static constexpr float RADIUS = 16.0f;
+static constexpr int   TICKS_PER_REV   = 700;
+static constexpr int   WALL_THRESHOLD   = 100;
+static constexpr float RADIUS          = 16.0f;
 static constexpr unsigned long MOVE_TIMEOUT = 3000;  // ms
 static constexpr unsigned long TURN_DURATION_MS = 1300; // ms
 static constexpr unsigned long WALL_APPROACH_MS = 20000;
-static constexpr unsigned long DEFAULT_FORWARD_PWM = 100;
-static constexpr float WHEEL_BASE = 900;
+static constexpr unsigned long DEFAULT_FORWARD_PWM = 60;
+static constexpr float WHEEL_BASE = 97.5;
 
 enum states {
-    STARTUP_TURN,
-    WAIT_FOR_ROTATION,
-    RETURN_TO_HEADING,
-    WALL_APPROACH,
     COMMAND_CHAIN,
     COMPLETE,
-    TEST
+    TEST,
+    FLOOD_FILL_MAPPING
 };
 
 class MotorController {
@@ -37,14 +34,24 @@ public:
     void stop();
 
     void startTurn(char direction, IMU* imu, PIDController* turnPID);
-    bool updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder); // updated signature
+    void startTurn45(char direction, IMU* imu, PIDController* turnPID);
+    bool updateTurn(IMU* imu, PIDController* turnPID, float dt, DualEncoder* encoder);
 
-    void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, float dt, float basePWM);
+
+    void driveStraightDualEncoder(DualEncoder* encoder, IMU* imu, PIDController* headingPID, PIDController* wallPID, float dt, float basePWM);
 
     void startCommandChain(const char* cmd);
     void resetInternalState();
-    void processCommandStep(PIDController* turnPID, PIDController* headingPID, DualEncoder* encoder, IMU* imu, states* currentState, float dt);
+    void processCommandStep(PIDController* turnPID, PIDController* headingPID, PIDController* wallPID, DualEncoder* encoder, IMU* imu, states* currentState, LidarSensor* lidar, float dt);
+
     char getCurrentCommand();
+    bool getCommandActive();
+
+    bool MotorController::isWallRight(LidarSensor* lidar);
+    bool MotorController::isWallLeft(LidarSensor* lidar);
+    bool MotorController::isWallBoth(LidarSensor* lidar);
+    bool MotorController::isWallfront(LidarSensor* lidar);
+
 
 	// void startupTurn(IMU* imu, PIDController* turnPID, float dt, states& currentState);
     // void waitForRotation(IMU* imu, PIDController* turnPID, states& currentState);
@@ -57,9 +64,7 @@ public:
 private:
     int mot1_pwm, mot1_dir, mot2_pwm, mot2_dir;
 
-    KalmanFilter yawFilter;
-
-    char commandBuffer[64];
+    char commandBuffer[64]; //INCREASE POSSIBLY
     int commandIndex;
     bool commandActive;
     bool moveInProgress;

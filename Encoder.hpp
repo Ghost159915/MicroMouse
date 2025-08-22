@@ -13,7 +13,7 @@ private:
     static void isrRight();
 
 public:
-    DualEncoder(int aL = 2, int bL = 7, int aR = 3, int bR = 8);
+    DualEncoder(int aL, int bL, int aR, int bR);
     void begin();
     
     // Basic tick access
@@ -32,6 +32,8 @@ public:
     
     // Drift detection
     float getDriftRatio() const;  // Returns left/right ratio
+
+    
 };
 
 #endif

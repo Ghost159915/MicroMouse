@@ -6,13 +6,16 @@
 #include "IMU.hpp"
 #include <Wire.h>
 
+bool AUTONOMOUS_MAPPING = false;
+
 MotorController motors(11, 12, 9, 10);
 DualEncoder encoder(2, 7, 3, 8);  // Left encoder on 2,7; Right on 3,8
 Display display(RADIUS, TICKS_PER_REV);
 
 PIDController DistancePID(0.9, 0.0, 0.3, 0.8);
-PIDController TurningPID(1.92, 0.32, 0.0, 0.8);
+PIDController TurningPID(2.2, 0.0, 0.0, 0.8);
 PIDController HeadingPID(1.0, 0.0, 0.2, 0.8);
+PIDController WallPID(0.5, 0.0, 0.0, 0.8);
 
 LidarSensor lidar;
 IMU imu;
@@ -32,10 +35,14 @@ void setup() {
     lidar.begin();
     encoder.reset();
     lastTime = millis();
-    motors.startCommandChain("RR");
+    motors.startCommandChain("FFLFFLFLFRFRFFRFF");
     imu.calibrate();
-    delay(3000);
+    delay(1500);
 }
+//FRFFRFLFFLFLFRFRFLFLFFFF
+//FFFRFFRFFRFLFLFFLFRFLFFLFLF
+//FFFRFFRFLFRFFRFF
+//FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 void loop() {
     unsigned long now = millis();
@@ -47,40 +54,29 @@ void loop() {
     switch (currentState) {
         case COMMAND_CHAIN:
             char activeCmd = motors.getCurrentCommand();
+            if (AUTONOMOUS_MAPPING) {
+                currentState = FLOOD_FILL_MAPPING;
+            }
+            else if (activeCmd == '\0' || !(motors.getCommandActive())) {
+                currentState = COMPLETE;
+            }
             float heading = imu.yaw();
-            motors.processCommandStep(&TurningPID, &HeadingPID, &encoder, &imu, &currentState, dt);
+            motors.processCommandStep(&TurningPID, &HeadingPID, &WallPID, &encoder, &imu, &currentState, &lidar, dt);
             display.showCommandStatus("COMMAND_CHAIN", activeCmd, heading);
+
+            // static unsigned long t0 = millis();
+            // if ((millis() - t0) > 300) {
+            //     t0 = millis();
+            // }
+            // Serial.print(encoder.getLeftTicks()); Serial.print("    "); Serial.println(encoder.getRightTicks());
+
             break;
 
         case COMPLETE:
-            // display.showState("COMPLETE");
             motors.stop();
             break;
 
-        case STARTUP_TURN:
-            // motors.startupTurn(&imu, &TurningPID, dt, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
-
-        case WAIT_FOR_ROTATION:
-            // motors.waitForRotation(&imu, &TurningPID, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
-
-        case RETURN_TO_HEADING:
-            // motors.returnToHeading(&imu, &TurningPID, dt, currentState);
-            // display.showIMUReading(imu.yaw());
-            break;
-
-        case WALL_APPROACH:
-            // display.showLidarDistance(lidar.getLeftDistance(),
-            //                           lidar.getFrontDistance(),
-            //                           lidar.getRightDistance());
-            // motors.wallApproachDirect(&lidar, &DistancePID, dt, &currentState, &imu, &HeadingPID, &encoder);
-            break;
-
-        case TEST:
-            motors.stop();
+        case FLOOD_FILL_MAPPING:
             break;
 
         default:
